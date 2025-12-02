@@ -66,7 +66,7 @@
   - [ ] `player` ステート（Actor型）
   - [ ] `opponent` ステート（Actor型）
   - [ ] `cooldowns` ステート（Record<ActionType, number>）
-  - [ ] `currentRound` ステート
+  - [ ] `rank` / `winStreak` ステート（番付昇降と昇進判定用）
 
 **参考**: [docs/ARCHITECTURE.md - State Module](./docs/ARCHITECTURE.md#state-module-srcstate)
 

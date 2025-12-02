@@ -1,6 +1,6 @@
 # アーキテクチャ設計
 
-相撲バトルゲームのシステム設計とモジュール構造を説明します。
+レトロ風相撲バトルゲーム（MVP）のシステム設計とモジュール構造を説明します。
 
 ## 設計原則
 
@@ -23,33 +23,46 @@
 ## システム概要
 
 ```
-┌─────────────────────────────────────┐
-│         User Interface (UI)         │
-│  ┌─────────┐        ┌────────────┐ │
-│  │   HUD   │        │  Controls  │ │
-│  └─────────┘        └────────────┘ │
-└─────────────┬───────────────────────┘
-              │
-┌─────────────▼───────────────────────┐
-│       State Management (Zustand)    │
-└─────────────┬───────────────────────┘
-              │
-┌─────────────▼───────────────────────┐
-│          Game Systems               │
-│  ┌──────────┐  ┌─────────────────┐ │
-│  │ Physics  │  │ Action System   │ │
-│  └──────────┘  └─────────────────┘ │
-│  ┌──────────┐  ┌─────────────────┐ │
-│  │  Gauge   │  │   Collision     │ │
-│  └──────────┘  └─────────────────┘ │
-└─────────────┬───────────────────────┘
-              │
-┌─────────────▼───────────────────────┐
-│        3D Scene (Three.js)          │
-│  ┌──────────┐  ┌─────────────────┐ │
-│  │  Actors  │  │  Environment    │ │
-│  └──────────┘  └─────────────────┘ │
-└─────────────────────────────────────┘
+┌──────────────────────────────────────────┐
+│      User Interface (UI)                 │
+│  ┌──────────┐  ┌───────────┐  ┌───────┐ │
+│  │   HUD    │  │ Controls  │  │Screens│ │
+│  │ (レトロ)  │  │ (レトロ)   │  │(レトロ)│ │
+│  └──────────┘  └───────────┘  └───────┘ │
+└──────────────────┬───────────────────────┘
+                   │
+┌──────────────────▼───────────────────────┐
+│      State Management (Zustand)          │
+│  - Player/AI actors                      │
+│  - Gauge (0-100)                         │
+│  - Cooldowns                             │
+└──────────────────┬───────────────────────┘
+                   │
+┌──────────────────▼───────────────────────┐
+│         Game Systems                     │
+│  ┌──────────┐  ┌──────────┐  ┌────────┐ │
+│  │Movement  │  │ Actions  │  │  AI    │ │
+│  │(座標計算) │  │(ダメージ)│  │        │ │
+│  └──────────┘  └──────────┘  └────────┘ │
+│  ┌──────────┐  ┌──────────────────────┐ │
+│  │  Gauge   │  │ Simple Collision     │ │
+│  │(0-100)   │  │ (距離ベース判定)      │ │
+│  └──────────┘  └──────────────────────┘ │
+└──────────────────┬───────────────────────┘
+                   │
+┌──────────────────▼───────────────────────┐
+│       3D Scene (Three.js)                │
+│  ┌────────────┐  ┌──────────────────┐   │
+│  │   Actors   │  │   Environment    │   │
+│  │(Sumo/Ring) │  │ (Camera/Lights)  │   │
+│  └────────────┘  └──────────────────┘   │
+└──────────────────────────────────────────┘
+                   │
+┌──────────────────▼───────────────────────┐
+│         Styles (レトロデザイン)            │
+│  - 8bitカラーパレット (retro.css)         │
+│  - ドット絵フォント (PixelMplus)          │
+└──────────────────────────────────────────┘
 ```
 
 ## モジュール構造
@@ -60,24 +73,29 @@
 
 **エクスポート**:
 - `Actor` - 力士の型
-- `ActorStats` - ステータス（力、速さ、体力）
-- `Action` - アクションの型
+- `Action` - アクションの型（押す、つっぱり、スペシャル）
 - `GameState` - ゲーム状態の型
+- `ActionType` - アクション種類の列挙
 
 **依存**: なし
 
 ```typescript
-// Actor型の例
+// MVPの簡易Actor型
 interface Actor {
   id: string;
-  position: Vector3;
-  velocity: Vector3;
-  hp: number;
-  maxHp: number;
-  stats: ActorStats;
-  state: ActorState;
+  position: Vector3;  // 3D座標
+  hp: number;         // 現在HP
+  maxHp: number;      // 最大HP
+  state: ActorState;  // idle | attacking | damaged | defeated
 }
+
+// アクション種類
+type ActionType = 'push' | 'tsuppari' | 'special';
 ```
+
+**将来拡張** (Phase 3):
+- `ActorStats` - ステータス（力、速さ、体力）
+- `Rank` - 番付システム
 
 ### State Module (`src/state/`)
 
@@ -90,83 +108,121 @@ interface Actor {
 **依存**: `types/`
 
 ```typescript
-// ゲーム状態
+// MVP ゲーム状態
 interface GameState {
-  currentRound: number;
-  player: Actor;
-  opponent: Actor;
-  gauge: GaugeSystem;
-  cooldowns: Record<string, number>;
+  player: Actor;           // プレイヤー力士
+  opponent: Actor;         // AI力士
+  gauge: number;           // スペシャルゲージ (0-100)
+  cooldowns: Record<ActionType, number>;  // アクションクールダウン
+  gameStatus: 'title' | 'battle' | 'result';  // 画面状態
+  winner: 'player' | 'opponent' | null;  // 勝者
 }
 ```
+
+**将来拡張** (Phase 3):
+- `rank: Rank` - 番付システム
+- `winStreak: number` - 連勝数
+- `trainingPoints: number` - 育成ポイント
 
 ### Game Systems Module (`src/game/systems/`)
 
 **責務**: ゲームロジックとシステム
 
-#### Physics System
+#### Movement System (`movement.ts`)
 
-**責務**: 物理演算と衝突判定
+**責務**: 力士の移動とシンプルな座標計算
 
 **インターフェース**:
 ```typescript
-interface PhysicsSystem {
-  update(deltaTime: number): void;
-  applyForce(actorId: string, force: Vector3): void;
-  checkCollision(actor1: Actor, actor2: Actor): boolean;
+interface MovementSystem {
+  updatePosition(actor: Actor, deltaTime: number): void;
+  applyKnockback(actor: Actor, direction: Vector3, force: number): void;
+  checkRingOut(actor: Actor, ringRadius: number): boolean;
 }
 ```
 
 **実装詳細**:
-- cannon-esを使用した軽量物理演算
-- 力士のカプセル形状コライダー
-- 土俵の円形境界判定
+- 物理エンジン不使用、シンプルな座標計算
+- 距離ベースの衝突判定（力士間距離 < 閾値）
+- 土俵外判定: `position.length() > ringRadius`
+- ノックバック: 方向ベクトル × 力の大きさ
 
-#### Action System
+#### Action System (`actions.ts`)
 
 **責務**: アクション実行とクールダウン管理
 
 **インターフェース**:
 ```typescript
 interface ActionSystem {
-  executeAction(actorId: string, action: Action): void;
-  canExecute(actorId: string, actionType: Action['type']): boolean;
+  executeAction(actorId: string, action: ActionType): void;
+  canExecute(actorId: string, actionType: ActionType): boolean;
   updateCooldowns(deltaTime: number): void;
 }
 ```
 
-**アクション種類**:
-- `push` - 押す（300msクールダウン）
-- `tsuppari` - つっぱり（200msクールダウン）
-- `special_a` - スペシャル技A（ゲージ消費）
-- `special_b` - スペシャル技B（ゲージ消費）
+**MVPアクション**:
+- `push` - 押す（ダメージ + 小ノックバック、300msクールダウン）
+- `tsuppari` - つっぱり（連続ダメージ、200msクールダウン）
+- `special` - スペシャル技（大ダメージ + 大ノックバック、ゲージ100消費）
 
-#### Gauge System
+**ダメージ計算**:
+```typescript
+// シンプルな固定ダメージ
+push: 10HP
+tsuppari: 3HP
+special: 30HP
+```
+
+#### Gauge System (`gauge.ts`)
 
 **責務**: スペシャルゲージの管理
 
-**インターフェース**:
+**実装**:
 ```typescript
-interface GaugeSystem {
-  current: number; // 0-100
-  addGauge(amount: number): void;
-  consumeGauge(amount: number): boolean;
-  canUseSpecial(): boolean;
+// シンプルな数値管理（0-100）
+let gauge = 0;
+
+function addGauge(amount: number) {
+  gauge = Math.min(100, gauge + amount);
+}
+
+function canUseSpecial(): boolean {
+  return gauge >= 100;
+}
+
+function useSpecial(): boolean {
+  if (gauge >= 100) {
+    gauge = 0;
+    return true;
+  }
+  return false;
 }
 ```
 
 **ゲージ増加条件**:
-- 攻撃ヒット: +5
-- 被弾: +3
-- スペシャル技使用: -100
+- 攻撃ヒット: +10
+- 被弾: +5
+- スペシャル技使用: gauge = 0
+
+#### AI System (`ai.ts`)
+
+**責務**: AI対戦相手の行動制御
+
+**実装**:
+```typescript
+// シンプルな状態機械
+- 距離が近い → push or tsuppari (ランダム)
+- ゲージ満タン → special
+- 距離が遠い → 接近
+```
 
 ### Game Actors Module (`src/game/actors/`)
 
-**責務**: 3Dアクターの表示とアニメーション
+**責務**: 3Dアクターの表示
 
-#### Sumo Component
+#### Sumo Component (`Sumo.tsx`)
 
-**責務**: 力士の3Dモデルと表示
+**責務**: 力士の3D表示
 
 ```typescript
 interface SumoProps {
@@ -177,121 +233,214 @@ interface SumoProps {
 function Sumo({ actor, isPlayer }: SumoProps): JSX.Element
 ```
 
-**実装**:
-- プレースホルダーボックスモデル（初期実装）
-- 将来的にGLTFモデルに差し替え可能
-- アクター状態に応じた色変更
+**MVP実装**:
+- シンプルなBoxまたはCylinderジオメトリ
+- アクター状態に応じた色変更:
+  - idle: デフォルト色
+  - attacking: 明るい色
+  - damaged: 赤色フラッシュ
+  - defeated: 暗い色
 
-#### Ring Component
+**レトロスタイル**:
+- フラットシェーディング（ポリゴン感を出す）
+- 基本色のみ、テクスチャ不使用
 
-**責務**: 土俵の3Dモデルと表示
+#### Ring Component (`Ring.tsx`)
+
+**責務**: 土俵の3D表示
 
 ```typescript
 function Ring(): JSX.Element
 ```
 
-**実装**:
-- 円形の土俵メッシュ
-- 外周ラインの強調表示
-- 土俵外判定の境界可視化（デバッグモード）
+**MVP実装**:
+- Cylinderジオメトリ（低い円柱）
+- 外周ライン（別メッシュで強調）
+- シンプルなマテリアル（茶色系）
 
 ### UI Module (`src/ui/`)
 
-**責務**: ユーザーインターフェース
+**責務**: レトロ風ユーザーインターフェース
 
 #### HUD Components (`src/ui/hud/`)
 
 **責務**: ゲーム情報の表示
 
-コンポーネント:
-- `HPBar` - HPバー表示
-- `GaugeBar` - スペシャルゲージ表示
-- `RoundCounter` - ラウンド数表示
-- `HUD` - 上記を統合したHUDコンポーネント
+**MVPコンポーネント**:
+- `HPBar.tsx` - HPバー表示（プレイヤー/AI両方）
+- `GaugeBar.tsx` - スペシャルゲージ表示（0-100%）
+- `HUD.tsx` - 上記を統合したHUDコンポーネント
+
+**レトロスタイル**:
+- 8bitカラーパレット使用
+- PixelMplusドット絵フォント
+- シンプルな矩形バー
+- CRT風スキャンライン効果（オプション）
 
 #### Control Components (`src/ui/controls/`)
 
-**責務**: ユーザー入力
+**責務**: タッチ操作ボタン
 
-コンポーネント:
-- `ActionButton` - 単一アクションボタン
-- `ActionButtons` - 3つのアクションボタン群
+**MVPコンポーネント**:
+- `ActionButtons.tsx` - 3つのアクションボタン群（押す、つっぱり、スペシャル）
 
 ```typescript
 interface ActionButtonProps {
-  actionType: Action['type'];
-  cooldown: number;
-  disabled: boolean;
+  actionType: ActionType;  // 'push' | 'tsuppari' | 'special'
+  cooldown: number;        // 0-1 (cooldown進行度)
+  disabled: boolean;       // ゲージ不足等でdisabled
   onPress: () => void;
 }
 ```
 
+**レトロボタンデザイン**:
+- 大きなタッチターゲット（44×44px以上）
+- 8bitカラーでクリック状態表現
+- ドット絵フォントでラベル表示
+- クールダウン時は暗くdisabled表示
+
 #### Screen Components (`src/ui/screens/`)
 
-**責務**: ゲーム画面
+**責務**: ゲーム画面遷移
 
-画面:
-- `TitleScreen` - タイトル画面
-- `ResultScreen` - リザルト画面
+**MVPコンポーネント**:
+- `TitleScreen.tsx` - タイトル画面（試合開始ボタンのみ）
+- `ResultScreen.tsx` - リザルト画面（勝敗表示、連続挑戦/タイトルへ）
 
-### Scene Module (`src/game/scene/`)
+**レトロ演出**:
+- 8bitカラー背景
+- PixelMplusフォント
+- シンプルなアニメーション
 
-**責務**: 3Dシーンの設定
+### Game Scene (`src/game/GameScene.tsx`)
 
-コンポーネント:
-- `GameScene` - メインシーンコンポーネント
-- `Camera` - カメラ制御
-- `Lights` - ライティング設定
+**責務**: 3Dシーン統合コンポーネント
+
+**実装**:
+```tsx
+function GameScene() {
+  return (
+    <Canvas>
+      <PerspectiveCamera position={[0, 10, 12]} />
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[10, 10, 5]} />
+
+      <Sumo actor={player} isPlayer={true} />
+      <Sumo actor={opponent} isPlayer={false} />
+      <Ring />
+    </Canvas>
+  );
+}
+```
 
 **カメラ設定**:
 - 俯瞰斜め視点: `position: [0, 10, 12]`
 - ターゲット: 土俵中央 `[0, 0, 0]`
-- 自動ズーム調整（力士の距離に応じて）
+- 固定カメラ（MVP: 自動追従なし）
+
+**ライティング**:
+- 環境光: 全体を明るく
+- 平行光源: 影なし（パフォーマンス優先）
+
+### Styles Module (`src/styles/`)
+
+**責務**: レトロ風CSSスタイル
+
+#### retro.css
+
+**8bitカラーパレット**:
+```css
+:root {
+  --retro-bg: #0f380f;      /* 濃い緑（ゲームボーイ風）*/
+  --retro-fg: #9bbc0f;      /* 明るい緑 */
+  --retro-accent: #8bac0f;  /* 中間緑 */
+  --retro-dark: #306230;    /* 暗い緑 */
+
+  --hp-green: #00ff00;      /* HP満タン */
+  --hp-yellow: #ffff00;     /* HP中 */
+  --hp-red: #ff0000;        /* HP低 */
+  --gauge-blue: #00ffff;    /* ゲージ */
+}
+```
+
+**レトロボタンスタイル**:
+```css
+.retro-button {
+  font-family: 'PixelMplus', monospace;
+  background: var(--retro-accent);
+  border: 4px solid var(--retro-dark);
+  color: var(--retro-bg);
+  font-size: 24px;
+  padding: 16px 32px;
+  cursor: pointer;
+}
+
+.retro-button:active {
+  background: var(--retro-dark);
+  color: var(--retro-fg);
+}
+```
+
+#### fonts.css
+
+**PixelMplusフォント読み込み**:
+```css
+@font-face {
+  font-family: 'PixelMplus';
+  src: url('/fonts/PixelMplus12-Regular.ttf') format('truetype');
+}
+
+body {
+  font-family: 'PixelMplus', monospace;
+}
+```
 
 ## データフロー
 
-### アクション実行フロー
+### アクション実行フロー（MVP）
 
 ```
-User Input (Touch)
+User Touch Input
     ↓
 ActionButton Component
     ↓
 useGameStore Action
     ↓
 Action System
-    ├→ Cooldown Check
+    ├→ Cooldown Check (ok?)
     ├→ Execute Action
+    │   ├→ Damage Calculation (固定値)
+    │   └→ Knockback Direction + Force
     └→ Update Game State
         ↓
-Physics System
-    ├→ Apply Force
-    ├→ Collision Detection
-    └→ Update Actor Position
+Movement System
+    ├→ Apply Knockback (座標計算のみ)
+    ├→ Distance-based Collision
+    └→ Ring-out Check (distance > radius)
         ↓
 Gauge System
-    └→ Add/Consume Gauge
+    └→ Add Gauge (+10 hit, +5 damaged)
         ↓
-UI Update (via Zustand)
+UI Update (Zustand → React)
 ```
 
-### レンダリングフロー
+### レンダリングフロー（MVP）
 
 ```
 Game Loop (requestAnimationFrame)
     ↓
 Update Systems (deltaTime)
-    ├→ Physics Update
-    ├→ Cooldown Update
-    ├→ AI Update
-    └→ Collision Check
+    ├→ Movement Update (座標更新)
+    ├→ Cooldown Update (カウントダウン)
+    ├→ AI Update (簡易状態機械)
+    └→ Collision Check (距離ベース)
         ↓
 Update Zustand Store
     ↓
-React Re-render
-    ├→ Three.js Scene Update
-    ├→ HUD Update
-    └→ Button State Update
+React Re-render (Zustand購読)
+    ├→ Three.js Scene Update (Sumo positions)
+    ├→ HUD Update (HP/Gauge bars)
+    └→ Button State Update (cooldown/disabled)
 ```
 
 ## 技術選択の理由
@@ -322,89 +471,136 @@ React Re-render
 - Context API: パフォーマンス問題
 - MobX: 学習コスト高
 
-### cannon-es
+### シンプルな座標計算（物理エンジン不使用）
 
 **選択理由**:
-- 軽量物理エンジン
-- 必要十分な機能
-- Three.js統合容易
+- MVPには物理エンジン不要
+- バンドルサイズ削減（cannon-es ~200KB）
+- シンプルな実装で十分
+- デバッグ容易
 
-**物理演算の使用範囲**:
-- 力士の移動と衝突
-- ノックバック計算
-- 土俵外判定
+**座標計算の実装**:
+```typescript
+// ノックバック
+actor.position.add(direction.multiplyScalar(force * deltaTime));
 
-## パフォーマンス最適化
+// 衝突判定
+const distance = player.position.distanceTo(opponent.position);
+if (distance < threshold) { /* collision */ }
+
+// 土俵外判定
+if (actor.position.length() > ringRadius) { /* ring out */ }
+```
+
+### Vercel
+
+**選択理由**:
+- 静的サイトホスティング最適化
+- グローバルCDN
+- 自動ビルド最適化
+- 無料枠で十分
+
+**デプロイ設定**:
+```json
+{
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
+}
+```
+
+## パフォーマンス最適化（MVP）
 
 ### レンダリング最適化
 
 - デバイス解像度に応じた`dpr`設定（1-2）
-- 低品質プリセット:
-  - シャドウ無効化
-  - ポストエフェクト削減
-  - パーティクル簡略化
+- **シャドウなし**: 影を無効化（パフォーマンス優先）
+- **基本ジオメトリのみ**: Box/Cylinderで頂点数最小化
+- **フラットシェーディング**: レトロ感 + 計算軽量
 
 ### バンドル最適化
 
-- コード分割（React.lazy）
-- Tree-shaking（Vite）
-- アセット圧縮（GLTF: draco）
+**目標**: 1.5MB以下
+
+達成方法:
+- **物理エンジン削除**: cannon-es (~200KB) 不使用
+- **基本ジオメトリのみ**: GLTF モデル不使用
+- **Tree-shaking**: Vite自動最適化
+- **コード分割**: React.lazy（必要に応じて）
+- **Vercel CDN**: 圧縮配信自動化
 
 ### メモリ管理
 
-- アクター再利用（オブジェクトプール）
-- テクスチャ解放
-- 不要なイベントリスナー削除
+MVP では単純化:
+- アクター数固定（プレイヤー + AI のみ）
+- 基本ジオメトリ再利用
+- テクスチャ不使用（色のみ）
 
-## テスト戦略
+## テスト戦略（MVP）
 
 ### ユニットテスト
 
-- `systems/physics.test.ts` - 物理演算ロジック
-- `systems/gauge.test.ts` - ゲージ計算
-- `systems/ring.test.ts` - 土俵判定
+**Game Systems**:
+- `systems/movement.test.ts` - 座標計算、ノックバック、土俵外判定
+- `systems/actions.test.ts` - ダメージ計算、クールダウン
+- `systems/gauge.test.ts` - ゲージ増減、使用判定
+- `systems/ai.test.ts` - AI行動選択ロジック
 
 ### 統合テスト
 
-- ゲームフロー（タイトル→バトル→リザルト）
-- アクション実行とクールダウン
+**ゲームフロー**:
+- タイトル → バトル → リザルト画面遷移
+- アクション実行とクールダウン動作
 - ゲージ消費とスペシャル発動
+- 勝敗判定（HP/Ring-out）
 
 ### E2Eテスト
 
-- 実デバイスでのプレイテスト
-- パフォーマンス測定
-- ブラウザ互換性確認
+**実機テスト**:
+- iOS Safari, Android Chrome
+- タッチ操作精度
+- FPS測定（30fps以上維持）
+- バンドルサイズ検証（1.5MB以下）
 
-## セキュリティ考慮事項
+## セキュリティ考慮事項（MVP）
 
 ### クライアントサイドのみ
 
-- 現在はローカル実行のみ
-- 将来的なオンライン対戦時:
-  - サーバー検証必須
-  - クライアント信頼不可
-
-### データ保存
-
-- 設定をlocalStorageに保存
+MVPでは完全にクライアントサイド実行:
+- サーバー不要
+- localStorage で設定保存のみ
 - 機密情報なし
-- 端末時刻改ざんへの対策（育成システム実装時）
 
-## 拡張性
+**将来拡張** (Phase 3+):
+- オンライン対戦時: サーバー検証必須
+- 育成システム時: 端末時刻改ざん対策
 
-### Phase 3での追加予定
+## 拡張性（Phase 3以降）
 
-- **育成システム**: 新しいstateモジュール追加
-- **オンライン対戦**: WebSocketサーバー統合
-- **追加スペシャル技**: Actionシステムに技追加
+### 追加予定機能
+
+**育成システム**:
+- `types/ActorStats` - 力・速さ・体力
+- `state/trainingState` - 育成ポイント、日次記録
+- `ui/screens/TrainingScreen.tsx` - 育成UI
+
+**番付システム**:
+- `types/Rank` - 番付列挙
+- `state/rankState` - 現在番付、連勝数
+- `ui/hud/RankPanel.tsx` - 番付表示
+
+**オンライン対戦**:
+- WebSocketサーバー統合
+- マッチメイキングシステム
+- サーバーサイド検証
 
 ### モジュール追加パターン
 
-1. `types/`に新しいインターフェース定義
-2. `systems/`または`actors/`に実装
-3. `state/`に状態追加（必要に応じて）
+**Bricks & Studs アプローチ**:
+1. `types/` に新しいインターフェース定義（Studs）
+2. `systems/` または `actors/` に実装（Bricks）
+3. `state/` に状態追加
 4. テスト作成
+5. ドキュメント更新
 
 ## 開発環境
 
@@ -422,7 +618,15 @@ React Re-render
 
 ## 参考資料
 
+**ライブラリ**:
 - [Three.js Documentation](https://threejs.org/docs/)
 - [@react-three/fiber Documentation](https://docs.pmnd.rs/react-three-fiber)
 - [Zustand Documentation](https://docs.pmnd.rs/zustand)
-- [cannon-es Repository](https://github.com/pmndrs/cannon-es)
+- [Vite Documentation](https://vitejs.dev/)
+
+**レトロデザイン**:
+- [PixelMplus Font](https://itouhiro.hatenablog.com/entry/20130602/font) - ドット絵風日本語フォント
+- 8bit Color Palette - ゲームボーイ風カラー
+
+**デプロイ**:
+- [Vercel Documentation](https://vercel.com/docs)

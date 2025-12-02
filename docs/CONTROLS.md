@@ -1,6 +1,6 @@
 # 操作システム仕様
 
-相撲バトルゲームの操作システムとUIインタラクションを説明します。
+レトロ風相撲バトルゲーム（MVP）の操作システムとUIインタラクションを説明します。
 
 ## 設計原則
 
@@ -73,24 +73,30 @@ class InputAdapter {
 
 ## アクションボタン
 
-### ボタン種類
+### ボタン種類（レトロスタイル）
 
-**3つの基本アクション**:
+**3つの基本アクション**（8bitカラーパレット使用）:
 
 1. **押す (Push)**
-   - アイコン: 手のひらマーク
-   - 色: 赤系（#E74C3C）
+   - アイコン: 手のひらマーク（ドット絵風）
+   - 色: レトロアクセント（#8bac0f）
    - 配置: 左下
 
 2. **つっぱり (Tsuppari)**
-   - アイコン: 拳マーク
-   - 色: 青系（#3498DB）
+   - アイコン: 拳マーク（ドット絵風）
+   - 色: レトロ中間緑（#9bbc0f）
    - 配置: 中央下
 
 3. **スペシャル (Special)**
-   - アイコン: 星マーク
-   - 色: 金系（#F39C12）
+   - アイコン: 星マーク（ドット絵風）
+   - 色: レトロダーク（#306230）
    - 配置: 右下
+
+**レトロデザイン特徴**:
+- 太い境界線（4px）
+- 押下時の色反転
+- PixelMplusフォント使用
+- シンプルなドット絵アイコン
 
 ### ボタン配置
 
@@ -134,6 +140,67 @@ const buttonSpec = {
 - 視覚サイズ: 80×80px（見た目）
 - タッチ判定: 100×100px（内部処理）
 - 理由: 指の大きさを考慮（Apple HIG推奨: 44pt以上）
+
+### レトロボタンスタイリング（MVP）
+
+MVPでは8bitゲーム風のレトロボタンデザインを採用します。
+
+**CSS実装例**:
+
+```css
+.retro-button {
+  /* 基本スタイル */
+  font-family: 'PixelMplus', monospace;
+  background: var(--retro-accent);  /* #8bac0f */
+  border: 4px solid var(--retro-dark);  /* #306230 */
+  color: var(--retro-bg);  /* #0f380f */
+  font-size: 24px;
+  padding: 16px 32px;
+  cursor: pointer;
+
+  /* シャープなエッジ */
+  border-radius: 0;
+  image-rendering: pixelated;
+
+  /* ボックスシャドウでドット絵風深度 */
+  box-shadow:
+    4px 4px 0 var(--retro-dark),
+    8px 8px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* 押下状態 */
+.retro-button:active {
+  background: var(--retro-dark);  /* 色反転 */
+  color: var(--retro-fg);  /* #9bbc0f */
+
+  /* シャドウ削減で押下感 */
+  box-shadow:
+    2px 2px 0 var(--retro-dark),
+    4px 4px 0 rgba(0, 0, 0, 0.3);
+
+  /* 位置微調整 */
+  transform: translate(2px, 2px);
+}
+
+/* 無効状態 */
+.retro-button:disabled {
+  background: var(--retro-dark);
+  color: var(--retro-bg);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+```
+
+**レトロカラーパレット**:
+
+```css
+:root {
+  --retro-bg: #0f380f;      /* 濃い緑（背景） */
+  --retro-fg: #9bbc0f;      /* 明るい緑（文字） */
+  --retro-accent: #8bac0f;  /* 中間緑（ボタン） */
+  --retro-dark: #306230;    /* 暗い緑（影・境界） */
+}
+```
 
 ## ボタン状態
 
@@ -612,13 +679,14 @@ function getTouchPosition(touch: Touch): { x: number; y: number } {
 
 ## まとめ
 
-### 設計の要点
+### 設計の要点（MVP）
 
-1. **シンプルな操作**: 3ボタンのみ
-2. **明確なフィードバック**: 視覚・聴覚・触覚
-3. **アクセシビリティ**: 大きなタッチターゲット
-4. **パフォーマンス**: GPU加速アニメーション
-5. **テスト可能性**: 抽象化レイヤーによる分離
+1. **レトロデザイン**: 8bitカラーパレット、PixelMplusフォント、太い境界線
+2. **シンプルな操作**: 3ボタンのみ
+3. **明確なフィードバック**: 視覚・聴覚・触覚
+4. **アクセシビリティ**: 大きなタッチターゲット
+5. **パフォーマンス**: GPU加速アニメーション
+6. **テスト可能性**: 抽象化レイヤーによる分離
 
 ### 拡張可能性
 
