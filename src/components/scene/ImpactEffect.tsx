@@ -120,24 +120,35 @@ function DustBurst({ position, active }: { position: THREE.Vector3; active: bool
  */
 function ShockwaveRing({ position, active }: { position: THREE.Vector3; active: boolean }) {
   const ringRef = useRef<THREE.Mesh>(null);
-  const [scale, setScale] = useState(0.1);
-  const [opacity, setOpacity] = useState(1);
+  // Use refs instead of state to avoid re-renders in useFrame
+  const scaleRef = useRef(0.1);
+  const opacityRef = useRef(1);
   
   useFrame((_, delta) => {
-    if (!active || !ringRef.current) return;
+    if (!ringRef.current) return;
+    
+    if (!active) {
+      // Reset when inactive
+      scaleRef.current = 0.1;
+      opacityRef.current = 1;
+      return;
+    }
     
     // Expand ring
-    const newScale = Math.min(scale + delta * 8, 3);
-    setScale(newScale);
+    scaleRef.current = Math.min(scaleRef.current + delta * 8, 3);
     
     // Fade out as it expands
-    const newOpacity = Math.max(0, 1 - newScale / 3);
-    setOpacity(newOpacity);
+    opacityRef.current = Math.max(0, 1 - scaleRef.current / 3);
+    
+    // Update mesh directly (no setState!)
+    ringRef.current.scale.set(scaleRef.current, scaleRef.current, 1);
+    const material = ringRef.current.material as THREE.MeshBasicMaterial;
+    material.opacity = opacityRef.current;
     
     // Reset after animation
-    if (newScale >= 3) {
-      setScale(0.1);
-      setOpacity(1);
+    if (scaleRef.current >= 3) {
+      scaleRef.current = 0.1;
+      opacityRef.current = 1;
     }
   });
   
@@ -148,13 +159,13 @@ function ShockwaveRing({ position, active }: { position: THREE.Vector3; active: 
       ref={ringRef}
       position={[position.x, 0.05, position.z]}
       rotation={[-Math.PI / 2, 0, 0]}
-      scale={[scale, scale, 1]}
+      scale={[0.1, 0.1, 1]}
     >
       <ringGeometry args={[0.8, 1, 32]} />
       <meshBasicMaterial
         color="#ffcc00"
         transparent
-        opacity={opacity}
+        opacity={1}
         side={THREE.DoubleSide}
         depthWrite={false}
       />
@@ -168,27 +179,32 @@ function ShockwaveRing({ position, active }: { position: THREE.Vector3; active: 
  */
 function ImpactFlash({ position, active }: { position: THREE.Vector3; active: boolean }) {
   const lightRef = useRef<THREE.PointLight>(null);
-  const [intensity, setIntensity] = useState(0);
+  // Use ref instead of state to avoid re-renders in useFrame
+  const intensityRef = useRef(0);
   
   useFrame((_, delta) => {
+    if (!lightRef.current) return;
+    
     if (!active) {
-      setIntensity(0);
-      return;
+      intensityRef.current = 0;
+    } else {
+      // Flash then fade
+      if (intensityRef.current < 5) {
+        intensityRef.current = 5;
+      } else {
+        intensityRef.current = Math.max(0, intensityRef.current - delta * 30);
+      }
     }
     
-    // Flash then fade
-    if (intensity < 5) {
-      setIntensity(5);
-    } else {
-      setIntensity(Math.max(0, intensity - delta * 30));
-    }
+    // Update light directly (no setState!)
+    lightRef.current.intensity = intensityRef.current;
   });
   
   return (
     <pointLight
       ref={lightRef}
       position={[position.x, 1, position.z]}
-      intensity={intensity}
+      intensity={0}
       color="#ffaa00"
       distance={5}
       decay={2}
@@ -210,17 +226,22 @@ function CollisionLine({
   active: boolean;
 }) {
   const lineRef = useRef<THREE.Line>(null);
-  const [opacity, setOpacity] = useState(0);
+  // Use ref instead of state to avoid re-renders in useFrame
+  const opacityRef = useRef(0);
   
   useFrame((state) => {
     if (!lineRef.current) return;
     
     if (active) {
       // Pulsing opacity when colliding
-      setOpacity(0.4 + Math.sin(state.clock.getElapsedTime() * 15) * 0.3);
+      opacityRef.current = 0.4 + Math.sin(state.clock.getElapsedTime() * 15) * 0.3;
     } else {
-      setOpacity(Math.max(0, opacity - 0.1));
+      opacityRef.current = Math.max(0, opacityRef.current - 0.1);
     }
+    
+    // Update material opacity directly (no setState!)
+    const material = lineRef.current.material as THREE.LineBasicMaterial;
+    material.opacity = opacityRef.current;
     
     // Update line positions
     const positions = lineRef.current.geometry.attributes.position.array as Float32Array;
@@ -248,7 +269,7 @@ function CollisionLine({
       <lineBasicMaterial 
         color="#ff4444" 
         transparent 
-        opacity={opacity}
+        opacity={0}
         linewidth={3}
       />
     </line>
