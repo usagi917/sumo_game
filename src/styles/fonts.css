@@ -1,0 +1,46 @@
+/**
+ * Fonts Configuration
+ *
+ * Loads PixelMplus font for retro 8-bit sumo battle aesthetic
+ * Falls back to M PLUS 1 and monospace for compatibility
+ */
+
+/*
+ * PixelMplus Font
+ * 8-bit pixel font for retro sumo theme aesthetic
+ * Source: https://github.com/itouhiro/mixfont-mplus-ipa
+ */
+@import url('https://fonts.googleapis.com/css2?family=M+PLUS+1:wght@400;700&display=swap');
+
+/*
+ * Font Stack Priority:
+ * 1. PixelMplus - Primary retro pixel font (when available via CDN)
+ * 2. M PLUS 1 - Fallback Japanese font from Google Fonts
+ * 3. monospace - System monospace fallback
+ * 4. sans-serif - Final system fallback
+ */
+
+/*
+ * Note: PixelMplus would typically be loaded via CDN or self-hosted.
+ * For MVP, we're using Google Fonts' M PLUS 1 which gives a clean
+ * Japanese font. For true 8-bit feel, integrate PixelMplus later:
+ *
+ * Option 1 - CDN (if available):
+ * @import url('https://cdn.example.com/pixelmplus/pixelmplus.css');
+ *
+ * Option 2 - Self-hosted:
+ * @font-face {
+ *   font-family: 'PixelMplus';
+ *   src: url('/fonts/PixelMplus12-Regular.ttf') format('truetype');
+ *   font-weight: normal;
+ *   font-style: normal;
+ *   font-display: swap;
+ * }
+ * @font-face {
+ *   font-family: 'PixelMplus';
+ *   src: url('/fonts/PixelMplus12-Bold.ttf') format('truetype');
+ *   font-weight: bold;
+ *   font-style: normal;
+ *   font-display: swap;
+ * }
+ */

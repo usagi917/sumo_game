@@ -1,0 +1,300 @@
+/**
+ * Sumo Styling System
+ *
+ * Traditional sumo-themed color palette for retro sumo battle MVP
+ * Inspired by dohyo (sumo ring) earth tones and mawashi colors
+ * Provides CSS variables and base styling for the entire game
+ */
+
+/* ========================================
+   CSS Variables - Sumo Theme Palette
+   ======================================== */
+
+:root {
+  /* Primary Sumo Theme Colors */
+  --retro-bg: #3d2817;      /* 土俵の土色 (dohyo earth brown) - 背景 */
+  --retro-fg: #f4e4c1;      /* まわしのクリーム色 (mawashi cream) - メインテキスト/UI */
+  --retro-accent: #8b4513;  /* 茶色まわし (brown mawashi) - アクセント */
+  --retro-dark: #1a0f08;    /* 深い土色 (deep earth) - ボーダー/シャドウ */
+
+  /* HP Bar Colors */
+  --hp-green: #00ff00;      /* HP満タン (100-70%) */
+  --hp-yellow: #ffff00;     /* HP中 (70-30%) */
+  --hp-red: #ff0000;        /* HP低 (<30%) */
+
+  /* Special Colors */
+  --gauge-blue: #00ffff;    /* ゲージ色 */
+
+  /* UI Spacing */
+  --spacing-xs: 4px;
+  --spacing-sm: 8px;
+  --spacing-md: 16px;
+  --spacing-lg: 24px;
+  --spacing-xl: 32px;
+
+  /* Border Width */
+  --border-width: 4px;
+
+  /* Font Sizes */
+  --font-xs: 12px;
+  --font-sm: 16px;
+  --font-md: 24px;
+  --font-lg: 32px;
+  --font-xl: 48px;
+}
+
+/* ========================================
+   Global Resets and Base Styles
+   ======================================== */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'PixelMplus', 'M PLUS 1', monospace, sans-serif;
+  background-color: var(--retro-bg);
+  color: var(--retro-fg);
+  /* シャープな8bitレンダリング */
+  image-rendering: pixelated;
+  image-rendering: -moz-crisp-edges;
+  image-rendering: crisp-edges;
+  /* スムーズスクロール無効（8bit感） */
+  scroll-behavior: auto;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+}
+
+/* ========================================
+   Retro Button Styles
+   ======================================== */
+
+.retro-button {
+  font-family: 'PixelMplus', 'M PLUS 1', monospace, sans-serif;
+  background-color: var(--retro-accent);
+  border: var(--border-width) solid var(--retro-dark);
+  color: var(--retro-bg);
+  font-size: var(--font-md);
+  font-weight: bold;
+  padding: var(--spacing-md) var(--spacing-xl);
+  cursor: pointer;
+  /* 角ばった見た目 */
+  border-radius: 0;
+  /* ボックスシャドウで8bit感 */
+  box-shadow:
+    var(--border-width) var(--border-width) 0 var(--retro-dark);
+  /* トランジション無効（即座の反応） */
+  transition: none;
+  /* テキスト選択無効 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.retro-button:hover:not(:disabled) {
+  background-color: var(--retro-fg);
+}
+
+.retro-button:active:not(:disabled) {
+  /* 押し込み効果（色反転） */
+  background-color: var(--retro-dark);
+  color: var(--retro-fg);
+  /* シャドウ除去で押し込み感 */
+  box-shadow: none;
+  transform: translate(var(--border-width), var(--border-width));
+}
+
+.retro-button:disabled {
+  background-color: var(--retro-dark);
+  color: var(--retro-bg);
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ========================================
+   Retro Panel/Window Styles
+   ======================================== */
+
+.retro-panel {
+  background-color: var(--retro-bg);
+  border: var(--border-width) solid var(--retro-fg);
+  box-shadow:
+    var(--border-width) var(--border-width) 0 var(--retro-dark);
+  padding: var(--spacing-md);
+}
+
+/* ========================================
+   Retro Text Styles
+   ======================================== */
+
+.retro-title {
+  font-size: var(--font-xl);
+  font-weight: bold;
+  color: var(--retro-fg);
+  text-shadow:
+    var(--border-width) var(--border-width) 0 var(--retro-dark);
+  letter-spacing: 2px;
+}
+
+.retro-subtitle {
+  font-size: var(--font-lg);
+  font-weight: bold;
+  color: var(--retro-accent);
+}
+
+.retro-text {
+  font-size: var(--font-sm);
+  color: var(--retro-fg);
+  line-height: 1.5;
+}
+
+/* ========================================
+   HP & Gauge Bar Styles
+   ======================================== */
+
+.retro-bar-container {
+  background-color: var(--retro-dark);
+  border: var(--border-width) solid var(--retro-fg);
+  height: 32px;
+  position: relative;
+  overflow: hidden;
+}
+
+.retro-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  /* バーの色は動的に設定 */
+  transition: width 0.2s linear;
+}
+
+.retro-bar-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: var(--font-sm);
+  font-weight: bold;
+  color: var(--retro-bg);
+  text-shadow:
+    1px 1px 0 var(--retro-fg),
+    -1px -1px 0 var(--retro-fg),
+    1px -1px 0 var(--retro-fg),
+    -1px 1px 0 var(--retro-fg);
+  z-index: 1;
+}
+
+/* ========================================
+   Layout Utilities
+   ======================================== */
+
+.full-screen {
+  width: 100%;
+  height: 100%;
+  position: relative;
+}
+
+.center-content {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  flex-direction: column;
+  gap: var(--spacing-lg);
+}
+
+.hud-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 10;
+}
+
+.hud-overlay > * {
+  pointer-events: auto;
+}
+
+.controls-overlay {
+  position: absolute;
+  bottom: var(--spacing-lg);
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: auto;
+  z-index: 20;
+}
+
+/* ========================================
+   Accessibility
+   ======================================== */
+
+/* Reduced motion support */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Focus styles for keyboard navigation */
+.retro-button:focus-visible {
+  outline: var(--border-width) dashed var(--retro-fg);
+  outline-offset: var(--spacing-xs);
+}
+
+/* High contrast mode support */
+@media (prefers-contrast: high) {
+  :root {
+    --retro-fg: #ffffff;
+    --retro-bg: #000000;
+    --retro-accent: #00ff00;
+    --retro-dark: #ffffff;
+  }
+}
+
+/* ========================================
+   Camera Control Animations
+   ======================================== */
+
+@keyframes fadeInOut {
+  0%, 100% {
+    opacity: 0.3;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes pulseGlow {
+  0%, 100% {
+    box-shadow: 0 0 5px rgba(212, 175, 55, 0.5);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(212, 175, 55, 0.8);
+  }
+}
+
+/* Camera preset button hover effects */
+.camera-preset-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 3px 3px 0 var(--retro-dark), 0 0 10px rgba(212, 175, 55, 0.4);
+}
+
+.camera-preset-btn:active {
+  transform: translateY(0);
+  box-shadow: 1px 1px 0 var(--retro-dark);
+}
