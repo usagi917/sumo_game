@@ -1,102 +1,102 @@
 # 操作システム仕様
 
-レトロ風相撲バトルゲーム（MVP）の操作システムとUIインタラクションを説明します。
+レトロ風紙相撲バトルゲーム（MVP）の操作システムとUIインタラクションを説明します。
 
 ## 設計原則
 
 ### モバイルファースト
 
 - タッチ操作専用設計
-- 親指での片手操作を想定
-- 最小タッチターゲット: 60×60px
+- 連打しやすい大型ボタン
+- 最小タッチターゲット: 80×80px
 - 誤タップ防止の配慮
 
 ### シンプル操作
 
-- アクションボタン3つのみ
+- タップボタン2つのみ（強プッシュ/弱プッシュ）
 - 複雑なジェスチャー不要
 - 直感的な配置
-- 即座のフィードバック
+- 連打しやすい設計
 
 ## 入力システム
 
-### タッチイベント処理
+### タップイベント処理
 
 ```typescript
-interface TouchInputSystem {
-  handleTouchStart(e: TouchEvent): void;
-  handleTouchEnd(e: TouchEvent): void;
-  handleTouchMove(e: TouchEvent): void;
+interface TapInputSystem {
+  handleTap(button: TapButton): void;
+  trackTapRate(): number;
+  getTapRate(): number;  // タップ/秒
 }
 ```
 
 **イベントフロー**:
 
 ```
-Touch Start
+Tap Input
     ↓
-ボタン判定
+ボタン判定（強/弱）
     ↓
-アクション実行可能チェック
-├→ クールダウン中 → キャンセル
-├→ ゲージ不足 → キャンセル（スペシャルのみ）
-└→ 実行可能 → アクション発動
+TapTracker.addTap()
     ↓
-視覚フィードバック
+getTapRate() → タップ速度計測
     ↓
-Touch End
+TapForceConverter
+    ├→ 強プッシュ: baseForce + tapRate * 1.5
+    └→ 弱プッシュ: baseForce + tapRate * 0.8
+        ↓
+PhysicsEngine.applyTapForce()
+    ↓
+視覚フィードバック（ボタン押下アニメーション）
 ```
 
 ### 入力抽象化レイヤー
 
-タッチイベントをゲームアクションに変換：
+タップイベントをゲームアクションに変換：
 
 ```typescript
 class InputAdapter {
-  // タッチをアクションに変換
-  mapTouchToAction(touch: Touch): Action | null {
-    const button = this.detectButton(touch);
-    if (!button) return null;
-
-    return this.createAction(button.type);
+  // タップを物理的な力に変換
+  mapTapToForce(button: TapButton, tapRate: number): {
+    force: number;
+    tippingIncrease: number;
+  } {
+    return this.tapForceConverter.getForce(button, tapRate);
   }
 
   // ボタン検出
-  detectButton(touch: Touch): ActionButton | null {
+  detectButton(touch: Touch): TapButton | null {
     const { clientX, clientY } = touch;
     return this.buttons.find(btn =>
       this.isInside(clientX, clientY, btn.bounds)
-    );
+    )?.type;
   }
 }
 ```
 
-## アクションボタン
+## タップボタン
 
 ### ボタン種類（レトロスタイル）
 
-**3つの基本アクション**（8bitカラーパレット使用）:
+**2つの基本アクション**（8bitカラーパレット使用）:
 
-1. **押す (Push)**
-   - アイコン: 手のひらマーク（ドット絵風）
-   - 色: レトロアクセント（#8bac0f）
+1. **強プッシュ (Strong Push)**
+   - ラベル: 「強」（PixelMplusフォント）
+   - 色: 赤系（#ff4444）
    - 配置: 左下
+   - 特性: 高速前進、転倒リスク大
 
-2. **つっぱり (Tsuppari)**
-   - アイコン: 拳マーク（ドット絵風）
-   - 色: レトロ中間緑（#9bbc0f）
-   - 配置: 中央下
-
-3. **スペシャル (Special)**
-   - アイコン: 星マーク（ドット絵風）
-   - 色: レトロダーク（#306230）
+2. **弱プッシュ (Weak Push)**
+   - ラベル: 「弱」（PixelMplusフォント）
+   - 色: 青系（#4444ff）
    - 配置: 右下
+   - 特性: 安定前進、転倒リスク小
 
 **レトロデザイン特徴**:
 - 太い境界線（4px）
-- 押下時の色反転
+- 押下時のスケール変化
 - PixelMplusフォント使用
-- シンプルなドット絵アイコン
+- 大きく明瞭なラベル
 
 ### ボタン配置
 
@@ -105,41 +105,42 @@ class InputAdapter {
 
 ┌────────────────────────┐
 │                        │
-│     HUD (HP, ゲージ)    │
+│  傾きインジケーター     │
 │                        │
 │                        │
 │      ゲーム画面         │
+│     (3D土俵シーン)      │
 │                        │
 │                        │
 └────────────────────────┘
-│ [押す] [つっぱり] [SP] │ ← ボタン領域
+│   [強]         [弱]    │ ← タップボタン領域
 └────────────────────────┘
 ```
 
 **配置仕様**:
 
 - 画面下部に固定
-- 横並び（等間隔）
+- 左右に分離配置
 - 親指が届く範囲（画面下から15%以内）
-- 横幅: 画面の90%使用（両端5%マージン）
+- 横幅: 各ボタン画面の40%使用（中央20%は空白）
 
 ### ボタンサイズ
 
 ```typescript
-const buttonSpec = {
-  width: 80,        // px
-  height: 80,       // px
-  borderRadius: 40, // 円形
-  margin: 10,       // ボタン間隔
-  touchTarget: 100  // 実際のタッチ領域（余白含む）
+const tapButtonSpec = {
+  width: 120,       // px（連打しやすい大型サイズ）
+  height: 100,      // px
+  borderRadius: 8,  // 角丸
+  margin: 20,       // ボタン間隔（中央空白）
+  touchTarget: 140  // 実際のタッチ領域（余白含む）
 };
 ```
 
 **タッチターゲット**:
 
-- 視覚サイズ: 80×80px（見た目）
-- タッチ判定: 100×100px（内部処理）
-- 理由: 指の大きさを考慮（Apple HIG推奨: 44pt以上）
+- 視覚サイズ: 120×100px（見た目）
+- タッチ判定: 140×120px（内部処理）
+- 理由: 連打時の精度向上、指の大きさを考慮
 
 ### レトロボタンスタイリング（MVP）
 
@@ -148,42 +149,52 @@ MVPでは8bitゲーム風のレトロボタンデザインを採用します。
 **CSS実装例**:
 
 ```css
-.retro-button {
+.tap-button {
   /* 基本スタイル */
   font-family: 'PixelMplus', monospace;
-  background: var(--retro-accent);  /* #8bac0f */
   border: 4px solid var(--retro-dark);  /* #306230 */
   color: var(--retro-bg);  /* #0f380f */
-  font-size: 24px;
-  padding: 16px 32px;
+  font-size: 32px;
+  font-weight: bold;
+  padding: 24px;
   cursor: pointer;
+  min-width: 80px;
+  min-height: 80px;
 
   /* シャープなエッジ */
-  border-radius: 0;
+  border-radius: 8px;
   image-rendering: pixelated;
 
-  /* ボックスシャドウでドット絵風深度 */
-  box-shadow:
-    4px 4px 0 var(--retro-dark),
-    8px 8px 0 rgba(0, 0, 0, 0.3);
+  /* ユーザー選択無効化（連打時のテキスト選択防止） */
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* 強プッシュボタン */
+.tap-button.strong {
+  background: var(--strong-push);  /* #ff4444 */
+}
+
+/* 弱プッシュボタン */
+.tap-button.weak {
+  background: var(--weak-push);  /* #4444ff */
 }
 
 /* 押下状態 */
-.retro-button:active {
-  background: var(--retro-dark);  /* 色反転 */
-  color: var(--retro-fg);  /* #9bbc0f */
+.tap-button:active {
+  /* スケール縮小で押下感 */
+  transform: scale(0.95);
 
-  /* シャドウ削減で押下感 */
-  box-shadow:
-    2px 2px 0 var(--retro-dark),
-    4px 4px 0 rgba(0, 0, 0, 0.3);
+  /* 明度低下 */
+  filter: brightness(0.8);
 
-  /* 位置微調整 */
-  transform: translate(2px, 2px);
+  /* トランジション無効化（即座の反応） */
+  transition: none;
 }
 
 /* 無効状態 */
-.retro-button:disabled {
+.tap-button:disabled {
   background: var(--retro-dark);
   color: var(--retro-bg);
   opacity: 0.5;
@@ -199,6 +210,9 @@ MVPでは8bitゲーム風のレトロボタンデザインを採用します。
   --retro-fg: #9bbc0f;      /* 明るい緑（文字） */
   --retro-accent: #8bac0f;  /* 中間緑（ボタン） */
   --retro-dark: #306230;    /* 暗い緑（影・境界） */
+
+  --strong-push: #ff4444;   /* 強プッシュ（赤系） */
+  --weak-push: #4444ff;     /* 弱プッシュ（青系） */
 }
 ```
 
@@ -208,79 +222,81 @@ MVPでは8bitゲーム風のレトロボタンデザインを採用します。
 
 **表示**:
 - フル彩度の色
-- アイコン明瞭
-- ドロップシャドウ
+- ラベル明瞭
 - タップ可能
 
 **実装**:
 
 ```css
-.action-button {
+.tap-button {
   background: var(--button-color);
   opacity: 1.0;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.3);
   cursor: pointer;
 }
 ```
-
-### クールダウン状態 (Cooldown)
-
-**表示**:
-- 彩度低下（グレーアウト）
-- 円形プログレス表示
-- タップ不可
-
-**実装**:
-
-```typescript
-interface CooldownDisplay {
-  remaining: number;    // 残り時間 (ms)
-  total: number;        // 総時間 (ms)
-  progress: number;     // 0.0-1.0
-}
-```
-
-**プログレス表示**:
-
-```css
-.cooldown-overlay {
-  /* 円形プログレス */
-  stroke-dasharray: 251.2; /* 2πr (r=40) */
-  stroke-dashoffset: calc(251.2 * (1 - var(--progress)));
-  transition: stroke-dashoffset 50ms linear;
-}
-```
-
-### ゲージ不足状態 (Insufficient Gauge)
-
-**スペシャルボタンのみ**:
-
-- ゲージ100未満で無効化
-- 彩度低下
-- ロックアイコン表示（オプション）
-- タップしても反応なし
 
 ### アクティブ状態 (Active)
 
 **タップ中の表示**:
 
 - スケール縮小（0.95倍）
-- 明度上昇
-- タップ位置にリップルエフェクト
+- 明度低下（80%）
+- 即座の反応（トランジション無効）
 
 **実装**:
 
 ```typescript
-onTouchStart(button: ActionButton) {
-  button.scale = 0.95;
-  button.brightness = 1.2;
-  this.playRippleEffect(button);
+onTouchStart(button: TapButton) {
+  button.element.classList.add('active');
+  this.tapTracker.addTap();  // タップ記録
 }
 
-onTouchEnd(button: ActionButton) {
-  button.scale = 1.0;
-  button.brightness = 1.0;
+onTouchEnd(button: TapButton) {
+  button.element.classList.remove('active');
 }
+```
+
+## タップトラッキング
+
+### タップ速度計測
+
+```typescript
+class TapTracker {
+  private taps: number[] = [];
+  private readonly WINDOW = 1000;  // 1秒間のウィンドウ
+
+  addTap(timestamp: number = Date.now()): void {
+    this.taps.push(timestamp);
+    this.cleanup(timestamp);
+  }
+
+  private cleanup(currentTime: number): void {
+    const cutoff = currentTime - this.WINDOW;
+    this.taps = this.taps.filter(t => t >= cutoff);
+  }
+
+  getTapRate(): number {
+    return this.taps.length;  // タップ/秒
+  }
+
+  clear(): void {
+    this.taps = [];
+  }
+}
+```
+
+**計測の流れ**:
+
+```
+ボタンタップ
+    ↓
+timestamp記録（Date.now()）
+    ↓
+配列に追加
+    ↓
+1秒より古いタップを削除
+    ↓
+配列の長さ = タップ/秒
 ```
 
 ## 視覚フィードバック
@@ -289,71 +305,56 @@ onTouchEnd(button: ActionButton) {
 
 **即座の応答**:
 
-1. **視覚**: ボタンのスケール変化（50ms以内）
-2. **サウンド**: タップ音再生
+1. **視覚**: ボタンのスケール変化（トランジション無効、即座）
+2. **サウンド**: タップ音再生（オプション）
 3. **触覚**: バイブレーション（対応デバイス）
 
 **実装**:
 
 ```typescript
 class FeedbackSystem {
-  onButtonTap(button: ActionButton) {
-    // 視覚フィードバック
-    this.animateButton(button);
+  onButtonTap(button: TapButton) {
+    // 視覚フィードバック（CSS :active で自動）
+    // ボタンは押されている間 scale(0.95) + brightness(0.8)
 
-    // 音声フィードバック
-    this.playSound('button_tap');
+    // 音声フィードバック（オプション）
+    if (this.soundEnabled) {
+      this.playSound('button_tap');
+    }
 
     // 触覚フィードバック
     if (navigator.vibrate) {
-      navigator.vibrate(10); // 10ms
+      navigator.vibrate(5);  // 5ms（軽い振動）
     }
   }
 }
 ```
 
-### リップルエフェクト
+### 傾きインジケーター
 
-**タップ位置から広がる波紋**:
+**画面上部に表示**:
+
+```
+┌────────────────────────┐
+│ プレイヤー  [===  ]  AI│ ← 傾きバー（緑→黄→赤）
+│    50%              30%│
+└────────────────────────┘
+```
+
+**傾き度表示**:
+- 0-40%: 緑色（安全）
+- 40-70%: 黄色（警告）
+- 70-100%: 赤色（危険）
+
+**実装**:
 
 ```typescript
-interface RippleEffect {
-  x: number;          // タップ位置X
-  y: number;          // タップ位置Y
-  radius: number;     // 現在の半径
-  maxRadius: number;  // 最大半径（ボタン半径の1.5倍）
-  opacity: number;    // 透明度（1.0 → 0.0）
-  duration: 400;      // ms
+function getTippingColor(tipping: number): string {
+  if (tipping < 0.4) return 'var(--tipping-safe)';     // 緑
+  if (tipping < 0.7) return 'var(--tipping-warning)';  // 黄
+  return 'var(--tipping-danger)';                      // 赤
 }
 ```
-
-**アニメーション**:
-
-- 半径: 0 → maxRadius (easeOut)
-- 透明度: 1.0 → 0.0 (linear)
-- 色: ボタン色の薄い版
-
-### クールダウン表示
-
-**円形プログレスバー**:
-
-```
- ┌─────────┐
- │  ●●●    │ ← プログレス（時計回り）
- │ ●   ●   │
- │●  👊  ●│ ← アイコン（中央）
- │ ●   ●   │
- │  ●●●    │
- └─────────┘
-```
-
-**仕様**:
-
-- 外周に沿った円形ゲージ
-- 時計回りで減少
-- 色: 白（半透明）
-- 幅: 4px
-- 残り時間テキスト表示（オプション）
 
 ## アクセシビリティ
 
@@ -363,26 +364,25 @@ interface RippleEffect {
 
 - 最小サイズ: 44×44px
 - 推奨サイズ: 48×48px以上
-- 実装: 100×100px（余裕を持った設計）
+- 実装: 120×100px（連打しやすさ重視）
 
 **ボタン間隔**:
 
-- 最小間隔: 10px
-- 理由: 誤タップ防止
+- 中央空白: 20%（画面幅の）
+- 理由: 誤タップ防止、左右の手で分けやすい
 
 ### 視覚フィードバック
 
 **色覚対応**:
 
-- 色だけに依存しない（形状とアイコンでも判別可能）
-- ボタン種類ごとに異なるアイコン
-- 無効状態は彩度低下＋透明度変更
+- 色だけに依存しない（ラベル「強」「弱」で明確に区別）
+- ボタン種類ごとに異なる色（赤系/青系）
+- 傾きインジケーターも色+パーセンテージ表示
 
 **コントラスト**:
 
 - ボタン背景と画面背景: 最低4.5:1
-- アイコンとボタン背景: 最低3:1
-- テキストとボタン背景: 最低4.5:1
+- ラベルとボタン背景: 最低4.5:1
 
 ### 触覚フィードバック
 
@@ -390,10 +390,10 @@ interface RippleEffect {
 
 ```typescript
 const vibrationPatterns = {
-  buttonTap: 10,        // 軽いタップ
-  actionSuccess: 50,    // アクション成功
-  actionFailed: [30, 20, 30], // 失敗（パターン）
-  specialReady: [50, 30, 50]  // ゲージ満タン
+  buttonTap: 5,           // 軽いタップ（連打時の負担軽減）
+  fallen: 100,            // 転倒時（強い振動）
+  ringOut: [50, 30, 50],  // 土俵外（パターン）
+  victory: [50, 20, 50, 20, 100]  // 勝利（複雑なパターン）
 };
 ```
 
@@ -410,92 +410,85 @@ const vibrationPatterns = {
 ```typescript
 // 小画面（iPhone SE）
 if (screenWidth < 375) {
-  buttonSize = 70; // 少し小さく
+  buttonWidth = 100;   // 少し小さく
+  buttonHeight = 80;
+  margin = 15;
 }
 
 // 大画面（iPad）
 if (screenWidth > 768) {
-  buttonSize = 100; // 大きく
-  margin = 20;      // 間隔も広く
+  buttonWidth = 150;   // 大きく
+  buttonHeight = 120;
+  margin = 30;
 }
 ```
 
 ## UIコンポーネント構造
 
-### ActionButton Component
+### TapButton Component
 
 ```typescript
-interface ActionButtonProps {
-  type: 'push' | 'tsuppari' | 'special';
-  cooldown: number;          // 現在のクールダウン (ms)
-  disabled: boolean;         // 無効化状態
-  onPress: () => void;       // タップ時のコールバック
+interface TapButtonProps {
+  type: 'strong' | 'weak';
+  onTap: () => void;
+  disabled: boolean;
 }
 
-function ActionButton({
+function TapButton({
   type,
-  cooldown,
-  disabled,
-  onPress
-}: ActionButtonProps): JSX.Element {
+  onTap,
+  disabled
+}: TapButtonProps): JSX.Element {
   const [isPressed, setIsPressed] = useState(false);
-  const progress = cooldown > 0 ? cooldown / getCooldownTime(type) : 0;
+
+  const handleTouchStart = () => {
+    if (disabled) return;
+    setIsPressed(true);
+    onTap();  // タップを即座に記録
+  };
+
+  const handleTouchEnd = () => {
+    setIsPressed(false);
+  };
 
   return (
     <button
-      className={`action-button action-button--${type}`}
-      disabled={disabled || cooldown > 0}
-      onTouchStart={() => setIsPressed(true)}
-      onTouchEnd={() => {
-        setIsPressed(false);
-        if (!disabled && cooldown === 0) onPress();
-      }}
+      className={`tap-button tap-button--${type} ${isPressed ? 'active' : ''}`}
+      disabled={disabled}
+      onTouchStart={handleTouchStart}
+      onTouchEnd={handleTouchEnd}
+      onMouseDown={handleTouchStart}  // デスクトップ対応
+      onMouseUp={handleTouchEnd}
     >
-      <ButtonIcon type={type} />
-      {cooldown > 0 && (
-        <CooldownOverlay progress={progress} />
-      )}
-      {isPressed && <RippleEffect />}
+      {type === 'strong' ? '強' : '弱'}
     </button>
   );
 }
 ```
 
-### ActionButtons Container
+### TapButtons Container
 
 ```typescript
-interface ActionButtonsProps {
-  cooldowns: Record<ActionType, number>;
-  gaugeValue: number;
-  onAction: (type: ActionType) => void;
+interface TapButtonsProps {
+  onTap: (button: TapButton) => void;
+  disabled: boolean;  // ゲーム停止中など
 }
 
-function ActionButtons({
-  cooldowns,
-  gaugeValue,
-  onAction
-}: ActionButtonsProps): JSX.Element {
-  const canUseSpecial = gaugeValue >= 100;
-
+function TapButtons({
+  onTap,
+  disabled
+}: TapButtonsProps): JSX.Element {
   return (
-    <div className="action-buttons">
-      <ActionButton
-        type="push"
-        cooldown={cooldowns.push}
-        disabled={false}
-        onPress={() => onAction('push')}
+    <div className="tap-buttons">
+      <TapButton
+        type="strong"
+        onTap={() => onTap('strong')}
+        disabled={disabled}
       />
-      <ActionButton
-        type="tsuppari"
-        cooldown={cooldowns.tsuppari}
-        disabled={false}
-        onPress={() => onAction('tsuppari')}
-      />
-      <ActionButton
-        type="special"
-        cooldown={cooldowns.special}
-        disabled={!canUseSpecial}
-        onPress={() => onAction('special')}
+      <TapButton
+        type="weak"
+        onTap={() => onTap('weak')}
+        disabled={disabled}
       />
     </div>
   );
@@ -504,36 +497,40 @@ function ActionButtons({
 
 ## デバッグ機能
 
-### タッチ可視化
+### タップ可視化
 
 **開発モード限定**:
 
 ```typescript
 if (import.meta.env.DEV) {
-  // タッチ位置を可視化
-  onTouchStart((e: TouchEvent) => {
-    const touch = e.touches[0];
-    this.showTouchIndicator(touch.clientX, touch.clientY);
+  // タップレート表示
+  const tapRateDisplay = document.createElement('div');
+  tapRateDisplay.className = 'tap-rate-debug';
+  tapRateDisplay.textContent = `Tap Rate: ${tapTracker.getTapRate()} taps/sec`;
+
+  // 毎フレーム更新
+  requestAnimationFrame(() => {
+    tapRateDisplay.textContent = `Tap Rate: ${tapTracker.getTapRate()} taps/sec`;
   });
 }
 ```
 
 **表示内容**:
 
-- タッチ位置に赤い円表示
-- タッチ座標表示
-- 検出されたボタン名表示
+- タップ速度（taps/sec）
+- 現在の力の大きさ
+- 傾き度合い（0-1）
 
 ### 入力ログ
 
 **コンソールログ出力**:
 
 ```typescript
-logger.debug('Touch Input', {
-  type: 'start',
-  x: touch.clientX,
-  y: touch.clientY,
-  button: detectedButton?.type,
+logger.debug('Tap Input', {
+  button: 'strong',
+  tapRate: tapTracker.getTapRate(),
+  force: calculatedForce,
+  tippingIncrease: calculatedTipping,
   timestamp: Date.now()
 });
 ```
@@ -541,11 +538,6 @@ logger.debug('Touch Input', {
 ## パフォーマンス最適化
 
 ### イベント最適化
-
-**スロットリング**:
-
-- タッチムーブイベント: 16ms間隔（60fps）
-- 理由: 不要な再描画を防ぐ
 
 **パッシブリスナー**:
 
@@ -555,42 +547,66 @@ element.addEventListener('touchstart', handler, {
 });
 ```
 
+**連打時の最適化**:
+
+```typescript
+// タップトラッキングのスロットリング不要
+// 各タップを正確に記録する必要がある
+
+// ただし、UIフィードバックは60fps制限
+requestAnimationFrame(() => {
+  this.updateTapRateDisplay();
+});
+```
+
 ### レンダリング最適化
 
 **React.memo使用**:
 
 ```typescript
-export const ActionButton = React.memo(
-  ActionButtonComponent,
+export const TapButton = React.memo(
+  TapButtonComponent,
   (prev, next) => {
     // 必要な場合のみ再レンダリング
-    return (
-      prev.cooldown === next.cooldown &&
-      prev.disabled === next.disabled
-    );
+    return prev.disabled === next.disabled;
   }
 );
 ```
 
 **CSSアニメーション優先**:
 
-- transform / opacity のみ使用（GPU加速）
+- transform / filter のみ使用（GPU加速）
 - width / height の変更を避ける（リフロー防止）
+- transition無効化（:active時の即座の反応）
 
 ## テスト戦略
 
 ### 単体テスト
 
-**InputAdapterのテスト**:
+**TapTrackerのテスト**:
 
 ```typescript
-describe('InputAdapter', () => {
-  it('should map touch to correct action', () => {
-    const adapter = new InputAdapter(buttons);
-    const touch = { clientX: 100, clientY: 500 };
-    const action = adapter.mapTouchToAction(touch);
+describe('TapTracker', () => {
+  it('should track tap rate correctly', () => {
+    const tracker = new TapTracker();
 
-    expect(action?.type).toBe('push');
+    // 1秒間に5回タップをシミュレート
+    const now = Date.now();
+    for (let i = 0; i < 5; i++) {
+      tracker.addTap(now + i * 200);
+    }
+
+    expect(tracker.getTapRate()).toBe(5);
+  });
+
+  it('should cleanup old taps', () => {
+    const tracker = new TapTracker();
+    const now = Date.now();
+
+    tracker.addTap(now - 2000);  // 2秒前（削除されるべき）
+    tracker.addTap(now);          // 現在
+
+    expect(tracker.getTapRate()).toBe(1);
   });
 });
 ```
@@ -600,15 +616,14 @@ describe('InputAdapter', () => {
 **ボタンタップフローのテスト**:
 
 ```typescript
-it('should execute action on button tap', async () => {
-  const onAction = jest.fn();
-  render(<ActionButtons onAction={onAction} />);
+it('should apply force on button tap', async () => {
+  const onTap = jest.fn();
+  render(<TapButtons onTap={onTap} />);
 
-  const pushButton = screen.getByRole('button', { name: /push/i });
-  fireEvent.touchStart(pushButton);
-  fireEvent.touchEnd(pushButton);
+  const strongButton = screen.getByText('強');
+  fireEvent.touchStart(strongButton);
 
-  expect(onAction).toHaveBeenCalledWith('push');
+  expect(onTap).toHaveBeenCalledWith('strong');
 });
 ```
 
@@ -616,64 +631,66 @@ it('should execute action on button tap', async () => {
 
 **実機テスト項目**:
 
-- [ ] 各ボタンがタップに反応する
-- [ ] クールダウン中はタップ不可
-- [ ] ゲージ不足時スペシャル使用不可
+- [ ] 各ボタンが連打に反応する
+- [ ] タップ速度が正確に計測される
+- [ ] 高速連打（10+ taps/sec）でも正確
 - [ ] 視覚フィードバックが即座に表示される
 - [ ] バイブレーションが動作する（対応端末）
-- [ ] 誤タップが発生しにくい
+- [ ] 誤タップが発生しにくい（中央空白効果）
 
 ## トラブルシューティング
 
 ### よくある問題
 
-**問題: ボタンがタップに反応しない**
+**問題: ボタンが連打に反応しない**
 
 原因:
-- z-indexが低い（他の要素に隠れている）
-- pointer-events: none が設定されている
-- タッチイベントが伝播していない
+- イベントのデバウンスやスロットリングが適用されている
+- onTouchEndでのみ処理している（onTouchStartで処理すべき）
+
+解決:
+
+```typescript
+// ✅ 正しい：onTouchStartで即座に処理
+onTouchStart={() => {
+  tapTracker.addTap();
+  onTap(buttonType);
+}}
+
+// ❌ 間違い：onTouchEndで処理（遅延が発生）
+onTouchEnd={() => {
+  onTap(buttonType);
+}}
+```
+
+**問題: タップ速度が正確に計測されない**
+
+原因:
+- ウィンドウサイズが正しくない
+- 古いタップのクリーンアップが動作していない
+
+解決:
+
+```typescript
+// 毎回addTap時にクリーンアップを実行
+addTap(timestamp: number = Date.now()): void {
+  this.taps.push(timestamp);
+  this.cleanup(timestamp);  // 必須
+}
+```
+
+**問題: 連打時にテキストが選択される**
+
+原因:
+- user-selectが無効化されていない
 
 解決:
 
 ```css
-.action-button {
-  z-index: 1000;
-  pointer-events: auto;
-}
-```
-
-**問題: クールダウン表示が滑らかでない**
-
-原因:
-- 更新頻度が低い（100ms以上）
-- CSSトランジションが重い
-
-解決:
-
-```typescript
-// 60fps更新（16ms間隔）
-const updateInterval = 16;
-setInterval(() => {
-  this.updateCooldowns(deltaTime);
-}, updateInterval);
-```
-
-**問題: タップ位置がずれる**
-
-原因:
-- ブラウザのスクロールオフセット未考慮
-- CSS transformによる位置ずれ
-
-解決:
-
-```typescript
-function getTouchPosition(touch: Touch): { x: number; y: number } {
-  const rect = element.getBoundingClientRect();
-  return {
-    x: touch.clientX - rect.left,
-    y: touch.clientY - rect.top
-  };
+.tap-button {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 ```
 
@@ -682,20 +699,20 @@ function getTouchPosition(touch: Touch): { x: number; y: number } {
 ### 設計の要点（MVP）
 
 1. **レトロデザイン**: 8bitカラーパレット、PixelMplusフォント、太い境界線
-2. **シンプルな操作**: 3ボタンのみ
-3. **明確なフィードバック**: 視覚・聴覚・触覚
-4. **アクセシビリティ**: 大きなタッチターゲット
-5. **パフォーマンス**: GPU加速アニメーション
-6. **テスト可能性**: 抽象化レイヤーによる分離
+2. **シンプルな操作**: 2ボタン連打のみ（強/弱）
+3. **明確なフィードバック**: 視覚・聴覚・触覚、即座の反応
+4. **正確なタップ計測**: 1秒ウィンドウで連続タップ追跡
+5. **アクセシビリティ**: 大きなタッチターゲット、明確なラベル
+6. **パフォーマンス**: GPU加速アニメーション、トランジション無効化
 
 ### 拡張可能性
 
 将来的な機能追加の余地:
 
 - カスタムボタン配置（設定画面）
-- ジェスチャー操作（スワイプなど）
-- ゲームパッド対応（オプション）
-- マルチタッチ対応（複数ボタン同時押し）
+- タップ速度表示（リアルタイム）
+- タップ履歴グラフ
+- ベストタップ速度記録
 
 ## 参考資料
 

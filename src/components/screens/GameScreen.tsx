@@ -29,7 +29,6 @@ export interface GameScreenProps {
  */
 export default function GameScreen({ className = '' }: GameScreenProps) {
   const { updateCooldowns, executeAction, setActorPosition } = useGameActions();
-  const gameState = useGameStore();
 
   // Game loop effect
   useEffect(() => {
@@ -39,8 +38,10 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
     let lastTime = performance.now();
     let lastAITime = performance.now();
     const AI_UPDATE_INTERVAL = 500; // Update AI every 500ms
+    let animationId: number;
 
     const gameLoop = () => {
+      const state = useGameStore.getState();
       const currentTime = performance.now();
       const deltaTime = currentTime - lastTime;
       lastTime = currentTime;
@@ -53,13 +54,13 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
         lastAITime = currentTime;
 
         // Only update AI if game is ongoing
-        if (gameState.gameStatus === 'battle' && gameState.winner === null) {
+        if (state.gameStatus === 'battle' && state.winner === null) {
           // Make AI decision using opponent's gauge
           const aiDecision = makeAIDecision(
-            gameState.opponent,
-            gameState.player,
-            gameState.opponentGauge,
-            gameState.cooldowns,
+            state.opponent,
+            state.player,
+            state.opponentGauge,
+            state.cooldowns,
             currentTime
           );
 
@@ -75,26 +76,28 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
             const movement = aiDecision.moveDirection
               .clone()
               .multiplyScalar(moveSpeed * deltaTimeSeconds);
-            const newPosition = gameState.opponent.position.clone().add(movement);
+            const newPosition = state.opponent.position.clone().add(movement);
             setActorPosition('opponent', newPosition);
           }
         }
       }
 
       // Continue loop if game is active
-      if (gameState.gameStatus === 'battle') {
-        requestAnimationFrame(gameLoop);
+      if (state.gameStatus === 'battle') {
+        animationId = requestAnimationFrame(gameLoop);
       }
     };
 
     // Start game loop
-    const animationId = requestAnimationFrame(gameLoop);
+    animationId = requestAnimationFrame(gameLoop);
 
     // Cleanup on unmount
     return () => {
-      cancelAnimationFrame(animationId);
+      if (animationId) {
+        cancelAnimationFrame(animationId);
+      }
     };
-  }, [gameState.gameStatus, gameState.winner, updateCooldowns, executeAction, setActorPosition, gameState]);
+  }, [updateCooldowns, executeAction, setActorPosition]);
 
   return (
     <div className={`full-screen ${className}`} style={{ position: 'relative' }}>

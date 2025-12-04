@@ -1,6 +1,6 @@
 # アーキテクチャ設計
 
-レトロ風相撲バトルゲーム（MVP）のシステム設計とモジュール構造を説明します。
+レトロ風紙相撲バトルゲーム（MVP）のシステム設計とモジュール構造を説明します。
 
 ## 設計原則
 
@@ -26,27 +26,27 @@
 ┌──────────────────────────────────────────┐
 │      User Interface (UI)                 │
 │  ┌──────────┐  ┌───────────┐  ┌───────┐ │
-│  │   HUD    │  │ Controls  │  │Screens│ │
-│  │ (レトロ)  │  │ (レトロ)   │  │(レトロ)│ │
+│  │Tipping   │  │ Controls  │  │Screens│ │
+│  │Indicator │  │  (2ボタン)│  │(レトロ)│ │
 │  └──────────┘  └───────────┘  └───────┘ │
 └──────────────────┬───────────────────────┘
                    │
 ┌──────────────────▼───────────────────────┐
 │      State Management (Zustand)          │
 │  - Player/AI actors                      │
-│  - Gauge (0-100)                         │
-│  - Cooldowns                             │
+│  - Physics state (position, velocity)    │
+│  - Tap tracking                          │
 └──────────────────┬───────────────────────┘
                    │
 ┌──────────────────▼───────────────────────┐
 │         Game Systems                     │
 │  ┌──────────┐  ┌──────────┐  ┌────────┐ │
-│  │Movement  │  │ Actions  │  │  AI    │ │
-│  │(座標計算) │  │(ダメージ)│  │        │ │
+│  │ Physics  │  │  Tapping │  │  AI    │ │
+│  │  Engine  │  │  Tracker │  │        │ │
 │  └──────────┘  └──────────┘  └────────┘ │
 │  ┌──────────┐  ┌──────────────────────┐ │
-│  │  Gauge   │  │ Simple Collision     │ │
-│  │(0-100)   │  │ (距離ベース判定)      │ │
+│  │ Tipping  │  │ Collision/Ring-out   │ │
+│  │  System  │  │ (距離ベース判定)      │ │
 │  └──────────┘  └──────────────────────┘ │
 └──────────────────┬───────────────────────┘
                    │
@@ -54,7 +54,7 @@
 │       3D Scene (Three.js)                │
 │  ┌────────────┐  ┌──────────────────┐   │
 │  │   Actors   │  │   Environment    │   │
-│  │(Sumo/Ring) │  │ (Camera/Lights)  │   │
+│  │(Capsules)  │  │ (Camera/Lights)  │   │
 │  └────────────┘  └──────────────────┘   │
 └──────────────────────────────────────────┘
                    │
@@ -72,30 +72,36 @@
 **責務**: すべてのモジュールで共有される型定義（Studs）
 
 **エクスポート**:
-- `Actor` - 力士の型
-- `Action` - アクションの型（押す、つっぱり、スペシャル）
+- `PhysicsState` - 物理状態の型
+- `TapButton` - タップボタンの型（強プッシュ/弱プッシュ）
 - `GameState` - ゲーム状態の型
-- `ActionType` - アクション種類の列挙
 
 **依存**: なし
 
 ```typescript
-// MVPの簡易Actor型
-interface Actor {
-  id: string;
-  position: Vector3;  // 3D座標
-  hp: number;         // 現在HP
-  maxHp: number;      // 最大HP
-  state: ActorState;  // idle | attacking | damaged | defeated
+// 物理状態
+interface PhysicsState {
+  position: THREE.Vector3;       // 3D座標
+  velocity: THREE.Vector3;       // 速度ベクトル
+  acceleration: THREE.Vector3;   // 加速度ベクトル
+  rotation: THREE.Euler;         // 回転角度
+  angularVelocity: number;       // 角速度
+  mass: number;                  // 質量（固定: 1.0）
+  forces: THREE.Vector3[];       // 作用する力の配列
+  tipping: number;               // 傾き度合い（0-1）
+  isFallen: boolean;             // 転倒フラグ
 }
 
-// アクション種類
-type ActionType = 'push' | 'tsuppari' | 'special';
-```
+// タップボタン種類
+type TapButton = 'strong' | 'weak';
 
-**将来拡張** (Phase 3):
-- `ActorStats` - ステータス（力、速さ、体力）
-- `Rank` - 番付システム
+// アクター
+interface Actor {
+  id: string;
+  physicsState: PhysicsState;
+  isPlayer: boolean;
+}
+```
 
 ### State Module (`src/state/`)
 
@@ -112,97 +118,127 @@ type ActionType = 'push' | 'tsuppari' | 'special';
 interface GameState {
   player: Actor;           // プレイヤー力士
   opponent: Actor;         // AI力士
-  gauge: number;           // スペシャルゲージ (0-100)
-  cooldowns: Record<ActionType, number>;  // アクションクールダウン
   gameStatus: 'title' | 'battle' | 'result';  // 画面状態
   winner: 'player' | 'opponent' | null;  // 勝者
+  tapTracker: TapTracker;  // タップ追跡
 }
 ```
-
-**将来拡張** (Phase 3):
-- `rank: Rank` - 番付システム
-- `winStreak: number` - 連勝数
-- `trainingPoints: number` - 育成ポイント
 
 ### Game Systems Module (`src/game/systems/`)
 
 **責務**: ゲームロジックとシステム
 
-#### Movement System (`movement.ts`)
+#### Physics Engine (`physics.ts`)
 
-**責務**: 力士の移動とシンプルな座標計算
+**責務**: 物理シミュレーション（重力、慣性、摩擦）
 
 **インターフェース**:
 ```typescript
-interface MovementSystem {
-  updatePosition(actor: Actor, deltaTime: number): void;
-  applyKnockback(actor: Actor, direction: Vector3, force: number): void;
-  checkRingOut(actor: Actor, ringRadius: number): boolean;
+interface PhysicsEngine {
+  update(actor: PhysicsState, deltaTime: number): void;
+  applyForce(actor: PhysicsState, force: THREE.Vector3): void;
+  applyTapForce(actor: PhysicsState, button: TapButton, tapRate: number): void;
+}
+```
+
+**物理パラメータ**:
+```typescript
+const PhysicsConfig = {
+  gravity: new THREE.Vector3(0, -9.8, 0),
+  friction: 0.7,
+  airResistance: 0.95,
+  actorMass: 1.0,
+  tippingThreshold: Math.PI / 4,  // 45度
+  stabilizationRate: 0.98,
+  ringRadius: 4.5
+};
+```
+
+**実装詳細**:
+- 力の合成: `F = ma`
+- 速度更新: `v = v + a*dt`
+- 位置更新: `p = p + v*dt`
+- 摩擦・空気抵抗による減衰
+- カスタム実装（外部物理ライブラリ不使用）
+
+#### Tap Tracking System (`tap-tracker.ts`)
+
+**責務**: タップ速度の計測
+
+**インターフェース**:
+```typescript
+class TapTracker {
+  addTap(timestamp?: number): void;
+  getTapRate(): number;  // タップ/秒
+  clear(): void;
 }
 ```
 
 **実装詳細**:
-- 物理エンジン不使用、シンプルな座標計算
-- 距離ベースの衝突判定（力士間距離 < 閾値）
-- 土俵外判定: `position.length() > ringRadius`
-- ノックバック: 方向ベクトル × 力の大きさ
+- 1秒間のスライディングウィンドウ
+- タイムスタンプ配列で管理
+- 古いタップを自動削除
 
-#### Action System (`actions.ts`)
+#### Tap Force Converter (`tap-force.ts`)
 
-**責務**: アクション実行とクールダウン管理
+**責務**: タップ速度を力に変換
 
 **インターフェース**:
 ```typescript
-interface ActionSystem {
-  executeAction(actorId: string, action: ActionType): void;
-  canExecute(actorId: string, actionType: ActionType): boolean;
-  updateCooldowns(deltaTime: number): void;
+interface TapForceConverter {
+  getForce(button: TapButton, tapRate: number): {
+    force: number;
+    tippingIncrease: number;
+  };
 }
 ```
 
-**MVPアクション**:
-- `push` - 押す（ダメージ + 小ノックバック、300msクールダウン）
-- `tsuppari` - つっぱり（連続ダメージ、200msクールダウン）
-- `special` - スペシャル技（大ダメージ + 大ノックバック、ゲージ100消費）
-
-**ダメージ計算**:
+**変換式**:
 ```typescript
-// シンプルな固定ダメージ
-push: 10HP
-tsuppari: 3HP
-special: 30HP
+// 強プッシュ
+strongForce = 0.5 + (tapRate * 1.5);
+strongTipping = tapRate * 0.01;
+
+// 弱プッシュ
+weakForce = 0.3 + (tapRate * 0.8);
+weakTipping = tapRate * 0.003;
 ```
 
-#### Gauge System (`gauge.ts`)
+#### Tipping System (`tipping.ts`)
 
-**責務**: スペシャルゲージの管理
+**責務**: 転倒判定
 
-**実装**:
+**インターフェース**:
 ```typescript
-// シンプルな数値管理（0-100）
-let gauge = 0;
-
-function addGauge(amount: number) {
-  gauge = Math.min(100, gauge + amount);
-}
-
-function canUseSpecial(): boolean {
-  return gauge >= 100;
-}
-
-function useSpecial(): boolean {
-  if (gauge >= 100) {
-    gauge = 0;
-    return true;
-  }
-  return false;
+interface TippingSystem {
+  update(actor: PhysicsState, deltaTime: number): void;
+  checkFallen(actor: PhysicsState): boolean;
+  getTippingDirection(actor: PhysicsState): 'forward' | 'backward' | null;
 }
 ```
 
-**ゲージ増加条件**:
-- 攻撃ヒット: +10
-- 被弾: +5
-- スペシャル技使用: gauge = 0
+**判定条件**:
+- 前傾: `rotation.x > 45°` → 前に倒れる
+- 後傾: `rotation.x < -45°` → 後ろに倒れる
+- 重心逸脱: 支持基底面外
+
+#### Collision System (`collision.ts`)
+
+**責務**: 衝突検出と土俵外判定
+
+**インターフェース**:
+```typescript
+interface CollisionSystem {
+  checkCollision(actor1: PhysicsState, actor2: PhysicsState): boolean;
+  checkRingOut(actor: PhysicsState, ringRadius: number): boolean;
+  resolveCollision(actor1: PhysicsState, actor2: PhysicsState): void;
+}
+```
+
+**実装詳細**:
+- 距離ベース衝突判定: `distance < threshold`
+- 土俵外判定: `position.length() > ringRadius`
+- 反発係数適用
 
 #### AI System (`ai.ts`)
 
@@ -210,10 +246,56 @@ function useSpecial(): boolean {
 
 **実装**:
 ```typescript
-// シンプルな状態機械
-- 距離が近い → push or tsuppari (ランダム)
-- ゲージ満タン → special
-- 距離が遠い → 接近
+class AIEngine {
+  decide(self: PhysicsState, opponent: PhysicsState): {
+    button: TapButton;
+    tapRate: number;
+  } {
+    const distance = self.position.distanceTo(opponent.position);
+
+    // ルールベース判断
+    if (distance < 2.0) {
+      return { button: 'strong', tapRate: randomize(8, 12) };
+    }
+    if (self.tipping > 0.6) {
+      return { button: 'weak', tapRate: randomize(4, 6) };
+    }
+    if (opponent.tipping > 0.5) {
+      return { button: 'strong', tapRate: randomize(10, 15) };
+    }
+    return { button: 'weak', tapRate: randomize(5, 8) };
+  }
+}
+```
+
+**AI特性**:
+- ルールベース判断（状態機械）
+- タップ速度にランダム性（±20%）
+- 距離、自身の傾き、相手の傾きで行動決定
+
+#### Game Loop (`game-loop.ts`)
+
+**責務**: 固定タイムステップゲームループ
+
+**実装**:
+```typescript
+class GameLoop {
+  private fixedDeltaTime = 1/60;  // 60fps物理更新
+  private accumulator = 0;
+
+  update(deltaTime: number): void {
+    this.accumulator += deltaTime;
+
+    // 固定タイムステップで物理更新
+    while (this.accumulator >= this.fixedDeltaTime) {
+      this.physicsEngine.update(this.fixedDeltaTime);
+      this.accumulator -= this.fixedDeltaTime;
+    }
+
+    // 可変タイムステップでレンダリング
+    this.render();
+  }
+}
 ```
 
 ### Game Actors Module (`src/game/actors/`)
@@ -234,15 +316,15 @@ function Sumo({ actor, isPlayer }: SumoProps): JSX.Element
 ```
 
 **MVP実装**:
-- シンプルなBoxまたはCylinderジオメトリ
-- アクター状態に応じた色変更:
-  - idle: デフォルト色
-  - attacking: 明るい色
-  - damaged: 赤色フラッシュ
-  - defeated: 暗い色
+- Capsuleジオメトリ（カプセル型）
+- 物理状態に連動した回転・位置
+- 傾きに応じた色変更:
+  - 安定: デフォルト色
+  - 傾き中: 黄色系警告
+  - 転倒危険: 赤色警告
 
 **レトロスタイル**:
-- フラットシェーディング（ポリゴン感を出す）
+- フラットシェーディング（ポリゴン感）
 - 基本色のみ、テクスチャ不使用
 
 #### Ring Component (`Ring.tsx`)
@@ -267,37 +349,47 @@ function Ring(): JSX.Element
 **責務**: ゲーム情報の表示
 
 **MVPコンポーネント**:
-- `HPBar.tsx` - HPバー表示（プレイヤー/AI両方）
-- `GaugeBar.tsx` - スペシャルゲージ表示（0-100%）
-- `HUD.tsx` - 上記を統合したHUDコンポーネント
+- `TippingIndicator.tsx` - 傾きインジケーター（0-100%）
+- `HUD.tsx` - 統合HUDコンポーネント
+
+**傾きインジケーター**:
+```typescript
+interface TippingIndicatorProps {
+  tipping: number;  // 0-1（傾き度）
+  isPlayer: boolean;
+}
+```
 
 **レトロスタイル**:
 - 8bitカラーパレット使用
 - PixelMplusドット絵フォント
-- シンプルな矩形バー
-- CRT風スキャンライン効果（オプション）
+- 傾き度合いで色変化（緑 → 黄 → 赤）
+- シンプルなバーまたはメーター表示
 
 #### Control Components (`src/ui/controls/`)
 
 **責務**: タッチ操作ボタン
 
 **MVPコンポーネント**:
-- `ActionButtons.tsx` - 3つのアクションボタン群（押す、つっぱり、スペシャル）
+- `TapButtons.tsx` - 2つのタップボタン群（強プッシュ、弱プッシュ）
 
 ```typescript
-interface ActionButtonProps {
-  actionType: ActionType;  // 'push' | 'tsuppari' | 'special'
-  cooldown: number;        // 0-1 (cooldown進行度)
-  disabled: boolean;       // ゲージ不足等でdisabled
-  onPress: () => void;
+interface TapButtonProps {
+  buttonType: TapButton;  // 'strong' | 'weak'
+  onTap: () => void;
+  disabled: boolean;
 }
 ```
 
+**ボタン仕様**:
+- **強プッシュ**: 赤系色、「強」ラベル、高速前進・転倒リスク大
+- **弱プッシュ**: 青系色、「弱」ラベル、安定前進・転倒リスク小
+
 **レトロボタンデザイン**:
-- 大きなタッチターゲット（44×44px以上）
-- 8bitカラーでクリック状態表現
+- 大きなタッチターゲット（80×80px以上）
+- 8bitカラーで押下状態表現
 - ドット絵フォントでラベル表示
-- クールダウン時は暗くdisabled表示
+- 連打しやすいUI配置
 
 #### Screen Components (`src/ui/screens/`)
 
@@ -321,7 +413,7 @@ interface ActionButtonProps {
 function GameScene() {
   return (
     <Canvas>
-      <PerspectiveCamera position={[0, 10, 12]} />
+      <PerspectiveCamera position={[8, 8, 8]} />
       <ambientLight intensity={0.5} />
       <directionalLight position={[10, 10, 5]} />
 
@@ -334,7 +426,7 @@ function GameScene() {
 ```
 
 **カメラ設定**:
-- 俯瞰斜め視点: `position: [0, 10, 12]`
+- 俯瞰斜め視点: `position: [8, 8, 8]`
 - ターゲット: 土俵中央 `[0, 0, 0]`
 - 固定カメラ（MVP: 自動追従なし）
 
@@ -356,28 +448,39 @@ function GameScene() {
   --retro-accent: #8bac0f;  /* 中間緑 */
   --retro-dark: #306230;    /* 暗い緑 */
 
-  --hp-green: #00ff00;      /* HP満タン */
-  --hp-yellow: #ffff00;     /* HP中 */
-  --hp-red: #ff0000;        /* HP低 */
-  --gauge-blue: #00ffff;    /* ゲージ */
+  --tipping-safe: #00ff00;    /* 傾き安全（緑） */
+  --tipping-warning: #ffff00; /* 傾き警告（黄） */
+  --tipping-danger: #ff0000;  /* 傾き危険（赤） */
+
+  --strong-push: #ff4444;     /* 強プッシュ（赤系） */
+  --weak-push: #4444ff;       /* 弱プッシュ（青系） */
 }
 ```
 
 **レトロボタンスタイル**:
 ```css
-.retro-button {
+.tap-button {
   font-family: 'PixelMplus', monospace;
-  background: var(--retro-accent);
   border: 4px solid var(--retro-dark);
   color: var(--retro-bg);
-  font-size: 24px;
-  padding: 16px 32px;
+  font-size: 32px;
+  padding: 24px;
   cursor: pointer;
+  min-width: 80px;
+  min-height: 80px;
 }
 
-.retro-button:active {
-  background: var(--retro-dark);
-  color: var(--retro-fg);
+.tap-button.strong {
+  background: var(--strong-push);
+}
+
+.tap-button.weak {
+  background: var(--weak-push);
+}
+
+.tap-button:active {
+  transform: scale(0.95);
+  filter: brightness(0.8);
 }
 ```
 
@@ -397,31 +500,39 @@ body {
 
 ## データフロー
 
-### アクション実行フロー（MVP）
+### タップ操作フロー（MVP）
 
 ```
-User Touch Input
+User Tap Input
     ↓
-ActionButton Component
+TapButton Component
     ↓
-useGameStore Action
+TapTracker.addTap()
     ↓
-Action System
-    ├→ Cooldown Check (ok?)
-    ├→ Execute Action
-    │   ├→ Damage Calculation (固定値)
-    │   └→ Knockback Direction + Force
-    └→ Update Game State
+getTapRate() → tapRate/sec
+    ↓
+TapForceConverter
+    ├→ Calculate force (baseForce + tapRate * multiplier)
+    └→ Calculate tipping increase
         ↓
-Movement System
-    ├→ Apply Knockback (座標計算のみ)
-    ├→ Distance-based Collision
-    └→ Ring-out Check (distance > radius)
+PhysicsEngine
+    ├→ Apply force to actor
+    ├→ Update velocity (F = ma)
+    ├→ Update position (p = p + v*dt)
+    ├→ Apply friction/air resistance
+    └→ Update rotation/tipping
         ↓
-Gauge System
-    └→ Add Gauge (+10 hit, +5 damaged)
+TippingSystem
+    └→ Check if fallen (rotation > 45°)
         ↓
-UI Update (Zustand → React)
+CollisionSystem
+    ├→ Check actor-actor collision
+    └→ Check ring-out (distance > radius)
+        ↓
+Update Game State (Zustand)
+    └→ Determine winner if fallen/ring-out
+        ↓
+UI Update (React)
 ```
 
 ### レンダリングフロー（MVP）
@@ -429,18 +540,23 @@ UI Update (Zustand → React)
 ```
 Game Loop (requestAnimationFrame)
     ↓
-Update Systems (deltaTime)
-    ├→ Movement Update (座標更新)
-    ├→ Cooldown Update (カウントダウン)
-    ├→ AI Update (簡易状態機械)
-    └→ Collision Check (距離ベース)
+Calculate deltaTime
+    ↓
+Fixed Timestep Physics Update (60fps)
+    ├→ PhysicsEngine.update(fixedDeltaTime)
+    ├→ TippingSystem.update(fixedDeltaTime)
+    ├→ CollisionSystem.check()
+    └→ AI.decide() → simulateTaps()
         ↓
 Update Zustand Store
     ↓
 React Re-render (Zustand購読)
-    ├→ Three.js Scene Update (Sumo positions)
-    ├→ HUD Update (HP/Gauge bars)
-    └→ Button State Update (cooldown/disabled)
+    ├→ Three.js Scene Update
+    │   ├→ Sumo positions (physics.position)
+    │   └→ Sumo rotations (physics.rotation)
+    ├→ HUD Update
+    │   └→ TippingIndicator (physics.tipping)
+    └→ Button State Update (disabled判定)
 ```
 
 ## 技術選択の理由
@@ -471,25 +587,33 @@ React Re-render (Zustand購読)
 - Context API: パフォーマンス問題
 - MobX: 学習コスト高
 
-### シンプルな座標計算（物理エンジン不使用）
+### カスタム物理エンジン（外部ライブラリ不使用）
 
 **選択理由**:
-- MVPには物理エンジン不要
-- バンドルサイズ削減（cannon-es ~200KB）
+- MVPには複雑な物理演算不要
+- バンドルサイズ削減（cannon-es ~200KB, Rapier ~500KB節約）
 - シンプルな実装で十分
 - デバッグ容易
+- 完全制御可能
 
-**座標計算の実装**:
+**物理計算の実装**:
 ```typescript
-// ノックバック
-actor.position.add(direction.multiplyScalar(force * deltaTime));
+// 力の適用
+actor.forces.push(force);
 
-// 衝突判定
-const distance = player.position.distanceTo(opponent.position);
-if (distance < threshold) { /* collision */ }
+// 速度更新（F = ma）
+const netForce = sumForces(actor.forces);
+const acceleration = netForce.divideScalar(actor.mass);
+actor.velocity.add(acceleration.multiplyScalar(deltaTime));
 
-// 土俵外判定
-if (actor.position.length() > ringRadius) { /* ring out */ }
+// 摩擦・空気抵抗
+actor.velocity.multiplyScalar(0.95);
+
+// 位置更新
+actor.position.add(actor.velocity.clone().multiplyScalar(deltaTime));
+
+// 力をクリア
+actor.forces = [];
 ```
 
 ### Vercel
@@ -514,7 +638,7 @@ if (actor.position.length() > ringRadius) { /* ring out */ }
 
 - デバイス解像度に応じた`dpr`設定（1-2）
 - **シャドウなし**: 影を無効化（パフォーマンス優先）
-- **基本ジオメトリのみ**: Box/Cylinderで頂点数最小化
+- **基本ジオメトリのみ**: Capsuleで頂点数最小化
 - **フラットシェーディング**: レトロ感 + 計算軽量
 
 ### バンドル最適化
@@ -522,8 +646,8 @@ if (actor.position.length() > ringRadius) { /* ring out */ }
 **目標**: 1.5MB以下
 
 達成方法:
-- **物理エンジン削除**: cannon-es (~200KB) 不使用
-- **基本ジオメトリのみ**: GLTF モデル不使用
+- **物理エンジン削除**: cannon-es/Rapier不使用（~700KB節約）
+- **基本ジオメトリのみ**: GLTFモデル不使用
 - **Tree-shaking**: Vite自動最適化
 - **コード分割**: React.lazy（必要に応じて）
 - **Vercel CDN**: 圧縮配信自動化
@@ -535,29 +659,38 @@ MVP では単純化:
 - 基本ジオメトリ再利用
 - テクスチャ不使用（色のみ）
 
+### 物理演算最適化
+
+- 固定タイムステップ（60fps）で安定性確保
+- シンプルな力の計算（F=ma）
+- 距離ベース衝突判定（高速）
+- 不要な計算スキップ（転倒後は物理更新停止）
+
 ## テスト戦略（MVP）
 
 ### ユニットテスト
 
 **Game Systems**:
-- `systems/movement.test.ts` - 座標計算、ノックバック、土俵外判定
-- `systems/actions.test.ts` - ダメージ計算、クールダウン
-- `systems/gauge.test.ts` - ゲージ増減、使用判定
+- `systems/physics.test.ts` - 力の適用、速度/位置更新、摩擦
+- `systems/tap-tracker.test.ts` - タップ計測、ウィンドウ管理
+- `systems/tap-force.test.ts` - 力変換計算（強/弱）
+- `systems/tipping.test.ts` - 転倒判定、閾値チェック
+- `systems/collision.test.ts` - 衝突判定、土俵外判定
 - `systems/ai.test.ts` - AI行動選択ロジック
 
 ### 統合テスト
 
 **ゲームフロー**:
 - タイトル → バトル → リザルト画面遷移
-- アクション実行とクールダウン動作
-- ゲージ消費とスペシャル発動
-- 勝敗判定（HP/Ring-out）
+- タップ操作と力の適用
+- 転倒による勝敗判定
+- 土俵外による勝敗判定
 
 ### E2Eテスト
 
 **実機テスト**:
 - iOS Safari, Android Chrome
-- タッチ操作精度
+- タップ操作の精度と反応速度
 - FPS測定（30fps以上維持）
 - バンドルサイズ検証（1.5MB以下）
 
