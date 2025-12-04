@@ -142,7 +142,7 @@ export function makeAIDecision(
 
 /**
  * Check if AI should retreat
- * Retreats when low on HP
+ * Retreat likelihood increases as HP drops (probabilistic)
  *
  * @param ai - AI actor
  * @param player - Player actor
@@ -151,17 +151,25 @@ export function makeAIDecision(
 function shouldRetreat(ai: Actor, player: Actor): boolean {
   const hpPercent = ai.hp / ai.maxHp;
 
-  // Retreat if HP below 30% and player has more HP
-  if (hpPercent < 0.3 && player.hp > ai.hp) {
-    return true;
+  // Calculate base retreat chance based on HP
+  let chance = 0;
+  if (hpPercent < 0.15) {
+    chance = 0.8; // 80% chance when critically low
+  } else if (hpPercent < 0.3) {
+    chance = 0.55; // 55% chance when low
+  } else if (hpPercent < 0.5) {
+    chance = 0.25; // 25% chance when moderately damaged
   }
 
-  // Retreat if very low HP (below 20%)
-  if (hpPercent < 0.2) {
-    return true;
+  // Increase chance if player has more HP
+  if (player.hp > ai.hp) {
+    chance += 0.1;
   }
 
-  return false;
+  // Cap retreat chance at 90%
+  chance = Math.min(chance, 0.9);
+
+  return Math.random() < chance;
 }
 
 /**
