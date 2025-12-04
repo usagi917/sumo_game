@@ -53,11 +53,11 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
 
         // Only update AI if game is ongoing
         if (gameState.gameStatus === 'battle' && gameState.winner === null) {
-          // Make AI decision
+          // Make AI decision using opponent's gauge
           const aiDecision = makeAIDecision(
             gameState.opponent,
             gameState.player,
-            gameState.gauge,
+            gameState.opponentGauge,
             gameState.cooldowns,
             currentTime
           );

@@ -6,7 +6,7 @@
  */
 
 import ActionButton from './ActionButton';
-import { useGameActions, useCooldowns, useGauge } from '../../state/gameStore';
+import { useGameActions, useCooldowns, usePlayerGauge } from '../../state/gameStore';
 import type { ActionType } from '../../types/game';
 
 /**
@@ -24,7 +24,7 @@ export interface ControlsProps {
 export default function Controls({ className = '' }: ControlsProps) {
   const { executeAction } = useGameActions();
   const cooldowns = useCooldowns();
-  const gauge = useGauge();
+  const gauge = usePlayerGauge();
 
   // Handler for action buttons
   const handleAction = (action: ActionType) => {

@@ -64,8 +64,11 @@ export interface GameState {
   /** AI opponent's sumo wrestler */
   opponent: Actor;
 
-  /** Special move gauge (0-100) */
-  gauge: number;
+  /** Player's special move gauge (0-100) */
+  playerGauge: number;
+
+  /** Opponent's special move gauge (0-100) */
+  opponentGauge: number;
 
   /** Cooldowns for each action type (milliseconds remaining) */
   cooldowns: Record<ActionType, number>;

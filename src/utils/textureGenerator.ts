@@ -72,3 +72,4 @@ export function generateSumoTexture(color: string, isOpponent: boolean = false):
   return canvas;
 }
 
+

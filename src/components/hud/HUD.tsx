@@ -11,7 +11,7 @@
 
 import HPBar from './HPBar';
 import GaugeBar from './GaugeBar';
-import { usePlayer, useOpponent, useGauge } from '../../state/gameStore';
+import { usePlayer, useOpponent, usePlayerGauge } from '../../state/gameStore';
 
 /**
  * HUD Props
@@ -28,7 +28,7 @@ export interface HUDProps {
 export default function HUD({ className = '' }: HUDProps) {
   const player = usePlayer();
   const opponent = useOpponent();
-  const gauge = useGauge();
+  const gauge = usePlayerGauge();
 
   return (
     <div className={`hud-overlay ${className}`}>

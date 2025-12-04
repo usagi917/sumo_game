@@ -51,10 +51,10 @@ interface GameActions {
   executeAction: (attacker: 'player' | 'opponent', action: ActionType) => void;
 
   // Gauge
-  /** Increase gauge */
-  increaseGauge: (amount: number) => void;
-  /** Consume gauge for special move */
-  consumeGauge: (amount: number) => void;
+  /** Increase gauge for specific actor */
+  increaseGauge: (actorId: 'player' | 'opponent', amount: number) => void;
+  /** Consume gauge for specific actor's special move */
+  consumeGauge: (actorId: 'player' | 'opponent', amount: number) => void;
 
   // Cooldowns
   /** Set cooldown for action */
@@ -89,7 +89,8 @@ const createActor = (id: string, position: Vector3): Actor => ({
 const createInitialState = (): GameState => ({
   player: createActor('player', new Vector3(-2, 0, 0)),
   opponent: createActor('opponent', new Vector3(2, 0, 0)),
-  gauge: 0,
+  playerGauge: 0,
+  opponentGauge: 0,
   cooldowns: {
     push: 0,
     tsuppari: 0,
@@ -172,6 +173,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
   executeAction: (attacker: 'player' | 'opponent', action: ActionType) => {
     const state = get();
     const target = attacker === 'player' ? 'opponent' : 'player';
+    const attackerGauge = attacker === 'player' ? state.playerGauge : state.opponentGauge;
 
     // Check cooldown
     if (state.cooldowns[action] > 0) {
@@ -179,7 +181,7 @@ export const useGameStore = create<GameStore>((set, get) => ({
     }
 
     // Check gauge for special
-    if (action === 'special' && state.gauge < GAME_CONSTANTS.SPECIAL_GAUGE_COST) {
+    if (action === 'special' && attackerGauge < GAME_CONSTANTS.SPECIAL_GAUGE_COST) {
       return;
     }
 
@@ -197,17 +199,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
     const knockbackForce = ACTION_KNOCKBACK[action];
     get().applyKnockback(target, direction, knockbackForce);
 
-    // Update gauge
+    // Update attacker's gauge
     if (action !== 'special') {
-      get().increaseGauge(GAUGE_INCREASE.onHit);
+      get().increaseGauge(attacker, GAUGE_INCREASE.onHit);
     } else {
-      get().consumeGauge(GAME_CONSTANTS.SPECIAL_GAUGE_COST);
+      get().consumeGauge(attacker, GAME_CONSTANTS.SPECIAL_GAUGE_COST);
     }
 
-    // Set target state if not defeated
+    // Set target state and update target's gauge if not defeated
     if (state[target].state !== 'defeated') {
       get().setActorState(target, 'damaged');
-      get().increaseGauge(GAUGE_INCREASE.onDamaged);
+      get().increaseGauge(target, GAUGE_INCREASE.onDamaged);
     }
 
     // Set cooldown
@@ -234,15 +236,17 @@ export const useGameStore = create<GameStore>((set, get) => ({
   },
 
   // Gauge actions
-  increaseGauge: (amount: number) => {
+  increaseGauge: (actorId: 'player' | 'opponent', amount: number) => {
+    const gaugeKey = actorId === 'player' ? 'playerGauge' : 'opponentGauge';
     set((prev) => ({
-      gauge: Math.min(100, prev.gauge + amount),
+      [gaugeKey]: Math.min(100, prev[gaugeKey] + amount),
     }));
   },
 
-  consumeGauge: (amount: number) => {
+  consumeGauge: (actorId: 'player' | 'opponent', amount: number) => {
+    const gaugeKey = actorId === 'player' ? 'playerGauge' : 'opponentGauge';
     set((prev) => ({
-      gauge: Math.max(0, prev.gauge - amount),
+      [gaugeKey]: Math.max(0, prev[gaugeKey] - amount),
     }));
   },
 
@@ -288,8 +292,11 @@ export const usePlayer = () => useGameStore((state) => state.player);
 /** Get opponent actor */
 export const useOpponent = () => useGameStore((state) => state.opponent);
 
-/** Get gauge value */
-export const useGauge = () => useGameStore((state) => state.gauge);
+/** Get player's gauge value */
+export const usePlayerGauge = () => useGameStore((state) => state.playerGauge);
+
+/** Get opponent's gauge value */
+export const useOpponentGauge = () => useGameStore((state) => state.opponentGauge);
 
 /** Get cooldowns */
 export const useCooldowns = () => useGameStore((state) => state.cooldowns);
