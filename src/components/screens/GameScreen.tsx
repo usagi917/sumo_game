@@ -13,6 +13,7 @@ import HUD from '../hud/HUD';
 import Controls from '../controls/Controls';
 import { useGameActions, useGameStore } from '../../state/gameStore';
 import { makeAIDecision, resetAI } from '../../systems/ai';
+import { GAME_CONSTANTS } from '../../types/game';
 
 /**
  * Game Screen Props
@@ -27,7 +28,7 @@ export interface GameScreenProps {
  * Complete battle screen with scene, HUD, and controls
  */
 export default function GameScreen({ className = '' }: GameScreenProps) {
-  const { updateCooldowns, executeAction } = useGameActions();
+  const { updateCooldowns, executeAction, setActorPosition } = useGameActions();
   const gameState = useGameStore();
 
   // Game loop effect
@@ -67,8 +68,16 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
             executeAction('opponent', aiDecision.action);
           }
 
-          // TODO: AI movement (future enhancement)
-          // For MVP, actors stay in place
+          // Execute AI movement if any
+          if (aiDecision.moveDirection) {
+            const deltaTimeSeconds = deltaTime / 1000; // Convert ms to seconds
+            const moveSpeed = GAME_CONSTANTS.MOVEMENT_SPEED;
+            const movement = aiDecision.moveDirection
+              .clone()
+              .multiplyScalar(moveSpeed * deltaTimeSeconds);
+            const newPosition = gameState.opponent.position.clone().add(movement);
+            setActorPosition('opponent', newPosition);
+          }
         }
       }
 
@@ -85,7 +94,7 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
     return () => {
       cancelAnimationFrame(animationId);
     };
-  }, [gameState.gameStatus, gameState.winner, updateCooldowns, executeAction, gameState]);
+  }, [gameState.gameStatus, gameState.winner, updateCooldowns, executeAction, setActorPosition, gameState]);
 
   return (
     <div className={`full-screen ${className}`} style={{ position: 'relative' }}>

@@ -87,8 +87,8 @@ const createActor = (id: string, position: Vector3): Actor => ({
  * Initial state factory
  */
 const createInitialState = (): GameState => ({
-  player: createActor('player', new Vector3(-2, 0, 0)),
-  opponent: createActor('opponent', new Vector3(2, 0, 0)),
+  player: createActor('player', new Vector3(-1, 0, 0)),
+  opponent: createActor('opponent', new Vector3(1, 0, 0)),
   playerGauge: 0,
   opponentGauge: 0,
   cooldowns: {
