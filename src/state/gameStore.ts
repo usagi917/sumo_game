@@ -66,8 +66,8 @@ const createPhysicsState = (x: number, z: number): PhysicsState => ({
  * Initial state factory
  */
 const createInitialState = (): GameState => ({
-  player: createPhysicsState(-1, 0),
-  opponent: createPhysicsState(1, 0),
+  player: createPhysicsState(0, 3),
+  opponent: createPhysicsState(0, -3),
   gameStatus: 'title',
   winner: null,
   tapTracker: new TapTracker(),
@@ -93,8 +93,9 @@ export const useGameStore = create<GameStore>((set, get) => ({
     // Record tap
     state.tapTracker.addTap();
 
-    // Apply tap force to player
-    applyTapForce(state.player, state.tapTracker.getTapRate());
+    // Apply tap force to player and update state
+    const newPlayer = applyTapForce(state.player, state.tapTracker.getTapRate());
+    set({ player: newPlayer });
   },
 
   // Core action: Update physics simulation

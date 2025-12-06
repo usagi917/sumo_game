@@ -62,13 +62,14 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
         );
 
         if (aiDecision.shouldTap) {
-          // AI executes tap
-          applyTapForce(state.opponent, aiDecision.tapRate);
+          // AI executes tap - update opponent state
+          const newOpponent = applyTapForce(state.opponent, aiDecision.tapRate);
+          useGameStore.setState({ opponent: newOpponent });
         }
-
-        // Continue loop
-        animationId = requestAnimationFrame(gameLoop);
       }
+
+      // Continue loop regardless of game status
+      animationId = requestAnimationFrame(gameLoop);
     };
 
     // Start game loop

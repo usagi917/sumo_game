@@ -81,18 +81,31 @@ export function updateActorPhysics(
 /**
  * Apply tap force to actor
  *
- * @param actor - Physics state (modified in place)
+ * @param actor - Physics state
  * @param tapRate - Tap rate (taps/second)
+ * @returns New PhysicsState with force applied
  */
-export function applyTapForce(actor: PhysicsState, tapRate: number): void {
-  // Forward force (Z-axis)
-  actor.velocity.z += PHYSICS_CONSTANTS.TAP_FORCE;
+export function applyTapForce(actor: PhysicsState, tapRate: number): PhysicsState {
+  const newActor: PhysicsState = {
+    ...actor,
+    position: actor.position.clone(),
+    velocity: actor.velocity.clone(),
+    rotation: actor.rotation.clone(),
+  };
+
+  // Forward force - direction depends on which side of ring
+  // Player at z=3 pushes toward z=0 (negative direction)
+  // Opponent at z=-3 pushes toward z=0 (positive direction)
+  const forwardDirection = actor.position.z > 0 ? -1 : 1;
+  newActor.velocity.z += PHYSICS_CONSTANTS.TAP_FORCE * forwardDirection;
 
   // Upward bounce (Y-axis)
-  actor.velocity.y += PHYSICS_CONSTANTS.TAP_BOUNCE;
+  newActor.velocity.y += PHYSICS_CONSTANTS.TAP_BOUNCE;
 
   // Random wobble (X-axis rotation)
-  actor.angularVelocity += random(-0.1, 0.1);
+  newActor.angularVelocity += random(-0.1, 0.1);
+
+  return newActor;
 }
 
 /**

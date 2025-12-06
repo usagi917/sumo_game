@@ -33,14 +33,14 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
   // Determine win condition
   let winCondition = '';
   if (playerWon) {
-    if (opponent.hp <= 0) {
-      winCondition = 'HPで勝利!';
+    if (opponent.isFallen) {
+      winCondition = '転倒勝ち!';
     } else {
       winCondition = '押し出し勝ち!';
     }
   } else {
-    if (player.hp <= 0) {
-      winCondition = 'HPで敗北';
+    if (player.isFallen) {
+      winCondition = '転倒で敗北';
     } else {
       winCondition = '押し出された!';
     }
@@ -90,15 +90,15 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
           <strong>最終結果:</strong>
         </p>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--spacing-xs)' }}>
-          <span className="retro-text">あなたのHP:</span>
-          <span className="retro-text" style={{ color: player.hp > 0 ? 'var(--hp-green)' : 'var(--hp-red)' }}>
-            {Math.ceil(player.hp)} / {player.maxHp}
+          <span className="retro-text">あなたの傾き:</span>
+          <span className="retro-text" style={{ color: player.isFallen ? 'var(--hp-red)' : 'var(--hp-green)' }}>
+            {Math.round(player.tipping * 100)}%
           </span>
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span className="retro-text">あいてのHP:</span>
-          <span className="retro-text" style={{ color: opponent.hp > 0 ? 'var(--hp-green)' : 'var(--hp-red)' }}>
-            {Math.ceil(opponent.hp)} / {opponent.maxHp}
+          <span className="retro-text">あいての傾き:</span>
+          <span className="retro-text" style={{ color: opponent.isFallen ? 'var(--hp-red)' : 'var(--hp-green)' }}>
+            {Math.round(opponent.tipping * 100)}%
           </span>
         </div>
       </div>
