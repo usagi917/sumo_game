@@ -1,6 +1,6 @@
 # アーキテクチャ設計
 
-レトロ風紙相撲バトルゲーム（MVP）のシステム設計とモジュール構造を説明します。
+レトロ風紙相撲バトルゲームのシステム設計とモジュール構造を説明します。
 
 ## 設計原則
 
@@ -26,8 +26,8 @@
 ┌──────────────────────────────────────────┐
 │      User Interface (UI)                 │
 │  ┌──────────┐  ┌───────────┐  ┌───────┐ │
-│  │Tipping   │  │ Controls  │  │Screens│ │
-│  │Indicator │  │  (2ボタン)│  │(レトロ)│ │
+│  │  HUD     │  │ Controls  │  │Screens│ │
+│  │          │  │ (連打ボタン)│  │(レトロ)│ │
 │  └──────────┘  └───────────┘  └───────┘ │
 └──────────────────┬───────────────────────┘
                    │
@@ -78,22 +78,13 @@
 
 **依存**: なし
 
-```typescript
-// 物理状態
-interface PhysicsState {
-  position: THREE.Vector3;       // 3D座標
-  velocity: THREE.Vector3;       // 速度ベクトル
-  acceleration: THREE.Vector3;   // 加速度ベクトル
-  rotation: THREE.Euler;         // 回転角度
-  angularVelocity: number;       // 角速度
-  mass: number;                  // 質量（固定: 1.0）
-  forces: THREE.Vector3[];       // 作用する力の配列
-  tipping: number;               // 傾き度合い（0-1）
-  isFallen: boolean;             // 転倒フラグ
-}
+**主要インターフェース**:
 
-// タップボタン種類
-type TapButton = 'strong' | 'weak';
+- `PhysicsState`: 力士の物理状態（position, velocity, rotation, tipping等）
+- 完全な定義: [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md#型定義) を参照
+
+**主要型**:
+type ActionType = 'ton' | 'tonton';
 
 // アクター
 interface Actor {
@@ -113,16 +104,15 @@ interface Actor {
 
 **依存**: `types/`
 
-```typescript
-// MVP ゲーム状態
-interface GameState {
-  player: Actor;           // プレイヤー力士
-  opponent: Actor;         // AI力士
-  gameStatus: 'title' | 'battle' | 'result';  // 画面状態
-  winner: 'player' | 'opponent' | null;  // 勝者
-  tapTracker: TapTracker;  // タップ追跡
-}
-```
+**主要インターフェース**: `GameState` - ゲーム全体の状態管理
+
+**主要フィールド**:
+- `player`, `opponent`: 物理状態（PhysicsState）
+- `gameStatus`: 画面状態（'title' | 'battle' | 'result'）
+- `winner`: 勝者（'player' | 'opponent' | null）
+- `tapTracker`: タップ追跡（TapTracker）
+
+**完全な定義**: [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md#ゲーム状態管理) を参照
 
 ### Game Systems Module (`src/game/systems/`)
 
@@ -244,34 +234,14 @@ interface CollisionSystem {
 
 **責務**: AI対戦相手の行動制御
 
-**実装**:
-```typescript
-class AIEngine {
-  decide(self: PhysicsState, opponent: PhysicsState): {
-    button: TapButton;
-    tapRate: number;
-  } {
-    const distance = self.position.distanceTo(opponent.position);
-
-    // ルールベース判断
-    if (distance < 2.0) {
-      return { button: 'strong', tapRate: randomize(8, 12) };
-    }
-    if (self.tipping > 0.6) {
-      return { button: 'weak', tapRate: randomize(4, 6) };
-    }
-    if (opponent.tipping > 0.5) {
-      return { button: 'strong', tapRate: randomize(10, 15) };
-    }
-    return { button: 'weak', tapRate: randomize(5, 8) };
-  }
-}
-```
+**主要クラス**: `AIEngine`
 
 **AI特性**:
-- ルールベース判断（状態機械）
-- タップ速度にランダム性（±20%）
-- 距離、自身の傾き、相手の傾きで行動決定
+- ルールベース判断（距離、傾き状態に応じた行動選択）
+- タップ速度の動的調整（4～15 taps/sec）
+- ランダム性による人間らしさ
+
+**実装詳細**: [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md#aiエンジン) を参照
 
 #### Game Loop (`game-loop.ts`)
 
@@ -315,7 +285,7 @@ interface SumoProps {
 function Sumo({ actor, isPlayer }: SumoProps): JSX.Element
 ```
 
-**MVP実装**:
+**実装**:
 - Capsuleジオメトリ（カプセル型）
 - 物理状態に連動した回転・位置
 - 傾きに応じた色変更:
@@ -335,7 +305,7 @@ function Sumo({ actor, isPlayer }: SumoProps): JSX.Element
 function Ring(): JSX.Element
 ```
 
-**MVP実装**:
+**実装**:
 - Cylinderジオメトリ（低い円柱）
 - 外周ライン（別メッシュで強調）
 - シンプルなマテリアル（茶色系）
@@ -348,7 +318,7 @@ function Ring(): JSX.Element
 
 **責務**: ゲーム情報の表示
 
-**MVPコンポーネント**:
+**コンポーネント**:
 - `TippingIndicator.tsx` - 傾きインジケーター（0-100%）
 - `HUD.tsx` - 統合HUDコンポーネント
 
@@ -370,7 +340,7 @@ interface TippingIndicatorProps {
 
 **責務**: タッチ操作ボタン
 
-**MVPコンポーネント**:
+**コンポーネント**:
 - `TapButtons.tsx` - 2つのタップボタン群（強プッシュ、弱プッシュ）
 
 ```typescript
@@ -395,7 +365,7 @@ interface TapButtonProps {
 
 **責務**: ゲーム画面遷移
 
-**MVPコンポーネント**:
+**コンポーネント**:
 - `TitleScreen.tsx` - タイトル画面（試合開始ボタンのみ）
 - `ResultScreen.tsx` - リザルト画面（勝敗表示、連続挑戦/タイトルへ）
 
@@ -428,7 +398,7 @@ function GameScene() {
 **カメラ設定**:
 - 俯瞰斜め視点: `position: [8, 8, 8]`
 - ターゲット: 土俵中央 `[0, 0, 0]`
-- 固定カメラ（MVP: 自動追従なし）
+- 固定カメラ
 
 **ライティング**:
 - 環境光: 全体を明るく
@@ -500,7 +470,7 @@ body {
 
 ## データフロー
 
-### タップ操作フロー（MVP）
+### タップ操作フロー
 
 ```
 User Tap Input
@@ -535,7 +505,7 @@ Update Game State (Zustand)
 UI Update (React)
 ```
 
-### レンダリングフロー（MVP）
+### レンダリングフロー
 
 ```
 Game Loop (requestAnimationFrame)
@@ -590,7 +560,7 @@ React Re-render (Zustand購読)
 ### カスタム物理エンジン（外部ライブラリ不使用）
 
 **選択理由**:
-- MVPには複雑な物理演算不要
+- 複雑な物理演算は不要
 - バンドルサイズ削減（cannon-es ~200KB, Rapier ~500KB節約）
 - シンプルな実装で十分
 - デバッグ容易
@@ -632,7 +602,7 @@ actor.forces = [];
 }
 ```
 
-## パフォーマンス最適化（MVP）
+## パフォーマンス最適化
 
 ### レンダリング最適化
 
@@ -654,7 +624,7 @@ actor.forces = [];
 
 ### メモリ管理
 
-MVP では単純化:
+メモリ管理の設計:
 - アクター数固定（プレイヤー + AI のみ）
 - 基本ジオメトリ再利用
 - テクスチャ不使用（色のみ）
@@ -666,7 +636,7 @@ MVP では単純化:
 - 距離ベース衝突判定（高速）
 - 不要な計算スキップ（転倒後は物理更新停止）
 
-## テスト戦略（MVP）
+## テスト戦略
 
 ### ユニットテスト
 
@@ -694,46 +664,14 @@ MVP では単純化:
 - FPS測定（30fps以上維持）
 - バンドルサイズ検証（1.5MB以下）
 
-## セキュリティ考慮事項（MVP）
+## セキュリティ考慮事項
 
-### クライアントサイドのみ
+### クライアントサイド実行
 
-MVPでは完全にクライアントサイド実行:
+完全にクライアントサイドで実行:
 - サーバー不要
 - localStorage で設定保存のみ
 - 機密情報なし
-
-**将来拡張** (Phase 3+):
-- オンライン対戦時: サーバー検証必須
-- 育成システム時: 端末時刻改ざん対策
-
-## 拡張性（Phase 3以降）
-
-### 追加予定機能
-
-**育成システム**:
-- `types/ActorStats` - 力・速さ・体力
-- `state/trainingState` - 育成ポイント、日次記録
-- `ui/screens/TrainingScreen.tsx` - 育成UI
-
-**番付システム**:
-- `types/Rank` - 番付列挙
-- `state/rankState` - 現在番付、連勝数
-- `ui/hud/RankPanel.tsx` - 番付表示
-
-**オンライン対戦**:
-- WebSocketサーバー統合
-- マッチメイキングシステム
-- サーバーサイド検証
-
-### モジュール追加パターン
-
-**Bricks & Studs アプローチ**:
-1. `types/` に新しいインターフェース定義（Studs）
-2. `systems/` または `actors/` に実装（Bricks）
-3. `state/` に状態追加
-4. テスト作成
-5. ドキュメント更新
 
 ## 開発環境
 

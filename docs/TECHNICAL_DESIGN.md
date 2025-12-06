@@ -1,6 +1,6 @@
 # 技術設計仕様
 
-レトロ風紙相撲バトルゲームの技術的な実装詳細を説明します。
+レトロ風トントン相撲ゲームの技術的な実装詳細を説明します。
 
 ---
 
@@ -10,506 +10,800 @@
 
 - 最小限の技術スタックで最大の効果
 - 複雑な物理エンジンライブラリは使用しない
-- Three.jsの基本機能で物理シミュレーション実装
-- カスタムロジックで完全制御
+- ~100行のカスタム物理シミュレーション
+- Zustandで状態管理を一元化
 
 ### 技術選択の理由
 
-**Three.js + カスタム物理**：
-- ✅ バンドルサイズ削減（Cannon.js等の物理エンジン不要）
+**Three.js + カスタム物理エンジン**：
+- ✅ バンドルサイズ削減（外部物理ライブラリ不要）
 - ✅ 完全な制御（ゲームデザインに最適化）
-- ✅ デバッグ容易（シンプルな数式）
-- ✅ パフォーマンス最適化（必要な計算のみ）
+- ✅ デバッグ容易（~100行のシンプルな物理演算）
+- ✅ パフォーマンス最適化（必要な物理のみ実装）
+
+**Zustand状態管理**：
+- ✅ Redux不要（シンプルなAPI）
+- ✅ TypeScript完全対応
+- ✅ React Devtools連携
+- ✅ 最小限のボイラープレート
+
+**React + @react-three/fiber**：
+- ✅ React宣言的UI
+- ✅ Three.jsのReact統合
+- ✅ useFrameフック（物理シミュレーションループ）
+- ✅ コンポーネント再利用性
 
 **代替案との比較**：
-- ❌ Cannon.js: ~200KB、オーバースペック
-- ❌ Rapier: 高性能だが複雑すぎる
-- ❌ Matter.js: 2D物理エンジン（3D不向き）
+- ❌ Cannon.js/Rapier: ~200-500KB、オーバースペック
+- ❌ Redux: 状態管理が複雑すぎる
+- ❌ 生Three.js: Reactとの統合が困難
+- ❌ フル物理エンジン: トントン相撲には不要な機能が多い
 
 ---
 
-## 物理シミュレーション
+## 状態管理システム
 
-### カスタム物理エンジン
-
-**実装方針**：
-- Three.jsのVector3/Eulerを活用
-- 毎フレーム手動で物理計算
-- シンプルな力学モデル
-
-### 基本データ構造
+### Zustandストア
 
 ```typescript
+// state/gameStore.ts
 interface PhysicsState {
-  // 位置・速度
-  position: THREE.Vector3;     // 3D座標
-  velocity: THREE.Vector3;     // 速度ベクトル
-  acceleration: THREE.Vector3; // 加速度
-
-  // 回転
-  rotation: THREE.Euler;       // 回転角度（x: pitch, y: yaw, z: roll）
-  angularVelocity: number;     // 角速度（rad/s）
-
-  // 質量・力
-  mass: number;                // 質量（固定: 1.0）
-  forces: THREE.Vector3[];     // 適用される力のリスト
-
-  // 転倒状態
-  tipping: number;             // 傾き度合い（0-1）
-  isFallen: boolean;           // 転倒済みフラグ
+  position: Vector3;
+  velocity: Vector3;
+  angularVelocity: number;
+  rotation: Euler;
+  tipping: number;         // 傾き度（0-1）
+  isFallen: boolean;
 }
+
+interface GameState {
+  // プレイヤー状態
+  player: PhysicsState;
+
+  // 対戦相手状態
+  opponent: PhysicsState;
+
+  // ゲーム状態
+  gameStatus: 'title' | 'battle' | 'result';
+  winner: 'player' | 'opponent' | null;
+
+  // タップ追跡
+  tapTracker: TapTracker;
+
+  // アクション
+  executeTap: () => void;                          // プレイヤーのタップ
+  updatePhysics: (deltaTime: number) => void;     // 物理演算更新
+  checkVictory: () => void;                       // 勝敗判定
+  resetGame: () => void;
+}
+
+const useGameStore = create<GameState>((set, get) => ({
+  // 初期状態
+  player: {
+    position: new Vector3(0, 0, 3),
+    velocity: new Vector3(0, 0, 0),
+    angularVelocity: 0,
+    rotation: new Euler(0, 0, 0),
+    tipping: 0,
+    isFallen: false,
+  },
+
+  opponent: {
+    position: new Vector3(0, 0, -3),
+    velocity: new Vector3(0, 0, 0),
+    angularVelocity: 0,
+    rotation: new Euler(0, 0, 0),
+    tipping: 0,
+    isFallen: false,
+  },
+
+  gameStatus: 'title',
+  winner: null,
+  tapTracker: new TapTracker(),
+
+  // タップ実行
+  executeTap: () => {
+    const state = get();
+
+    // バトル中のみ実行
+    if (state.gameStatus !== 'battle') return;
+
+    // タップ記録
+    state.tapTracker.addTap();
+
+    // 物理エンジンに力を加える
+    const tapRate = state.tapTracker.getTapRate();
+    set((prev) => ({
+      player: {
+        ...prev.player,
+        velocity: prev.player.velocity.clone().add(
+          new Vector3(0, TAP_BOUNCE, TAP_FORCE)
+        ),
+        angularVelocity: prev.player.angularVelocity + random(-0.1, 0.1),
+      },
+    }));
+  },
+
+  // 物理演算更新
+  updatePhysics: (deltaTime) => {
+    const state = get();
+
+    // プレイヤー物理更新
+    const newPlayer = updateActorPhysics(state.player, deltaTime);
+
+    // AI物理更新
+    const newOpponent = updateActorPhysics(state.opponent, deltaTime);
+
+    // 衝突判定
+    resolveCollision(newPlayer, newOpponent);
+
+    set({
+      player: newPlayer,
+      opponent: newOpponent,
+    });
+
+    // 勝利判定
+    get().checkVictory();
+  },
+
+  // 勝利判定
+  checkVictory: () => {
+    const { player, opponent } = get();
+
+    // 転倒判定（60°以上）
+    if (player.tipping > FALL_THRESHOLD) {
+      set({ winner: 'opponent', gameStatus: 'result' });
+      return;
+    }
+
+    if (opponent.tipping > FALL_THRESHOLD) {
+      set({ winner: 'player', gameStatus: 'result' });
+      return;
+    }
+
+    // 土俵外判定（4.5 units以上）
+    if (player.position.length() > RING_RADIUS) {
+      set({ winner: 'opponent', gameStatus: 'result' });
+      return;
+    }
+
+    if (opponent.position.length() > RING_RADIUS) {
+      set({ winner: 'player', gameStatus: 'result' });
+      return;
+    }
+  },
+
+  // ゲームリセット
+  resetGame: () => {
+    set({
+      player: {
+        position: new Vector3(0, 0, 3),
+        velocity: new Vector3(0, 0, 0),
+        angularVelocity: 0,
+        rotation: new Euler(0, 0, 0),
+        tipping: 0,
+        isFallen: false,
+      },
+      opponent: {
+        position: new Vector3(0, 0, -3),
+        velocity: new Vector3(0, 0, 0),
+        angularVelocity: 0,
+        rotation: new Euler(0, 0, 0),
+        tipping: 0,
+        isFallen: false,
+      },
+      gameStatus: 'title',
+      winner: null,
+      tapTracker: new TapTracker(),
+    });
+  },
+}));
 ```
 
-### 物理パラメータ
+### 物理定数
 
 ```typescript
-const PhysicsConfig = {
-  // 重力
-  gravity: new THREE.Vector3(0, -9.8, 0),  // m/s²
-
-  // 摩擦
-  friction: 0.7,              // 土俵との摩擦係数
-  airResistance: 0.95,        // 空気抵抗（速度減衰率）
-
-  // 質量
-  actorMass: 1.0,             // 力士の質量
-
-  // 転倒
-  tippingThreshold: Math.PI / 4,  // 45度（ラジアン）
-  stabilizationRate: 0.98,    // 自動復元率（毎フレーム）
-
-  // 土俵
-  ringRadius: 4.5,            // 土俵半径
-  ringFriction: 0.7,          // 土俵表面摩擦
-
-  // タイムステップ
-  fixedDeltaTime: 1/60,       // 60fps固定
+// physics/constants.ts
+export const PHYSICS_CONSTANTS = {
+  GRAVITY: 9.8,              // m/s²
+  DAMPING: 0.92,             // 8% friction per frame
+  TAP_FORCE: 2.0,            // 前方への力
+  TAP_BOUNCE: 0.5,           // 上方への跳ね
+  FALL_ANGLE: Math.PI / 3,   // 60° = π/3 rad
+  MIN_FALL_VELOCITY: 0.5,    // 転倒に必要な最小速度
+  RING_RADIUS: 4.5,          // 土俵半径
 };
+
+export const FALL_THRESHOLD = PHYSICS_CONSTANTS.FALL_ANGLE;
+export const RING_RADIUS = PHYSICS_CONSTANTS.RING_RADIUS;
+export const TAP_FORCE = PHYSICS_CONSTANTS.TAP_FORCE;
+export const TAP_BOUNCE = PHYSICS_CONSTANTS.TAP_BOUNCE;
 ```
 
-### 力の適用システム
+---
+
+## トントン物理エンジン
+
+### カスタム物理シミュレーション（~100行）
 
 ```typescript
-class ForceSystem {
-  private forces: THREE.Vector3[] = [];
+// physics/tontonzumo-physics.ts
 
-  // 力を追加
-  addForce(force: THREE.Vector3): void {
-    this.forces.push(force.clone());
+/**
+ * アクターの物理状態を更新
+ *
+ * @param actor - 物理状態
+ * @param deltaTime - フレーム時間（秒）
+ * @returns 更新された物理状態
+ */
+function updateActorPhysics(
+  actor: PhysicsState,
+  deltaTime: number
+): PhysicsState {
+  const newActor = { ...actor };
+
+  // 1. 重力適用
+  newActor.velocity.y -= PHYSICS_CONSTANTS.GRAVITY * deltaTime;
+
+  // 2. 速度更新（位置 = 位置 + 速度 * 時間）
+  newActor.position = actor.position.clone().add(
+    actor.velocity.clone().multiplyScalar(deltaTime)
+  );
+
+  // 3. 地面接地判定
+  if (newActor.position.y < 0) {
+    newActor.position.y = 0;
+    newActor.velocity.y = 0;
   }
 
-  // 全ての力を合成
-  getNetForce(): THREE.Vector3 {
-    return this.forces.reduce(
-      (sum, force) => sum.add(force),
-      new THREE.Vector3()
-    );
+  // 4. 減衰（摩擦・空気抵抗）
+  newActor.velocity.multiplyScalar(PHYSICS_CONSTANTS.DAMPING);
+
+  // 5. 回転更新
+  newActor.rotation.x += newActor.angularVelocity * deltaTime;
+
+  // 6. 回転の減衰
+  newActor.angularVelocity *= 0.95;
+
+  // 7. 傾き度計算（0-1）
+  newActor.tipping = Math.abs(newActor.rotation.x) / PHYSICS_CONSTANTS.FALL_ANGLE;
+
+  // 8. 転倒判定
+  if (newActor.tipping >= 1.0 && newActor.velocity.length() > PHYSICS_CONSTANTS.MIN_FALL_VELOCITY) {
+    newActor.isFallen = true;
   }
 
-  // 力をクリア（毎フレーム後）
-  clear(): void {
-    this.forces = [];
+  return newActor;
+}
+
+/**
+ * タップ時の力を適用
+ *
+ * @param actor - 物理状態
+ * @param tapRate - タップ速度（回/秒）
+ */
+function applyTapForce(actor: PhysicsState, tapRate: number): void {
+  // 前方への力（Z軸）
+  actor.velocity.z += PHYSICS_CONSTANTS.TAP_FORCE;
+
+  // 上方への跳ね（Y軸）
+  actor.velocity.y += PHYSICS_CONSTANTS.TAP_BOUNCE;
+
+  // ランダムな揺れ（X軸回転）
+  actor.angularVelocity += random(-0.1, 0.1);
+}
+
+/**
+ * 2アクター間の衝突判定と解決
+ *
+ * @param actor1 - 力士1
+ * @param actor2 - 力士2
+ */
+function resolveCollision(actor1: PhysicsState, actor2: PhysicsState): void {
+  const distance = actor1.position.distanceTo(actor2.position);
+  const collisionThreshold = 1.0; // 衝突距離閾値
+
+  if (distance < collisionThreshold) {
+    // 衝突方向ベクトル
+    const direction = actor2.position.clone().sub(actor1.position).normalize();
+
+    // 反発力（運動量保存の簡易版）
+    const restitution = 0.5; // 反発係数
+    const relativeVelocity = actor1.velocity.clone().sub(actor2.velocity);
+    const impactSpeed = relativeVelocity.dot(direction);
+
+    if (impactSpeed > 0) {
+      // 衝突している場合のみ反発
+      const impulse = direction.multiplyScalar(impactSpeed * restitution);
+
+      actor1.velocity.sub(impulse);
+      actor2.velocity.add(impulse);
+
+      // 位置補正（めり込み防止）
+      const overlap = collisionThreshold - distance;
+      const correction = direction.multiplyScalar(overlap * 0.5);
+
+      actor1.position.sub(correction);
+      actor2.position.add(correction);
+    }
   }
+}
+
+/**
+ * 土俵外判定
+ *
+ * @param position - 力士の位置
+ * @returns 土俵外の場合true
+ */
+function isRingOut(position: Vector3): boolean {
+  // 土俵中心からの距離（XZ平面）
+  const distanceFromCenter = Math.sqrt(
+    position.x * position.x + position.z * position.z
+  );
+
+  return distanceFromCenter > PHYSICS_CONSTANTS.RING_RADIUS;
+}
+
+/**
+ * ランダム値生成（min～max）
+ */
+function random(min: number, max: number): number {
+  return Math.random() * (max - min) + min;
 }
 ```
 
-### 物理更新ループ
+### 物理ループ（固定タイムステップ）
 
 ```typescript
-class PhysicsEngine {
-  update(actor: PhysicsState, deltaTime: number): void {
-    // 1. 力を合成
-    const netForce = this.forceSystem.getNetForce();
+// game/game-loop.ts
 
-    // 2. 加速度計算（F = ma → a = F/m）
-    actor.acceleration = netForce.divideScalar(actor.mass);
+class GameLoop {
+  private fixedDeltaTime = 1 / 60; // 60fps物理更新
+  private accumulator = 0;
 
-    // 3. 重力を追加
-    actor.acceleration.add(PhysicsConfig.gravity);
+  update(deltaTime: number): void {
+    this.accumulator += deltaTime;
 
-    // 4. 速度更新（v = v + a*dt）
-    actor.velocity.add(
-      actor.acceleration.clone().multiplyScalar(deltaTime)
-    );
+    // 固定タイムステップで物理更新
+    while (this.accumulator >= this.fixedDeltaTime) {
+      // 物理エンジン更新
+      useGameStore.getState().updatePhysics(this.fixedDeltaTime);
 
-    // 5. 摩擦・空気抵抗
-    actor.velocity.multiplyScalar(PhysicsConfig.airResistance);
+      this.accumulator -= this.fixedDeltaTime;
+    }
 
-    // 6. 位置更新（p = p + v*dt）
-    actor.position.add(
-      actor.velocity.clone().multiplyScalar(deltaTime)
-    );
-
-    // 7. 回転更新
-    this.updateRotation(actor, deltaTime);
-
-    // 8. 転倒判定
-    this.checkTipping(actor);
-
-    // 9. 土俵外判定
-    this.checkRingOut(actor);
-
-    // 10. 力をクリア
-    this.forceSystem.clear();
+    // 可変タイムステップでレンダリング
+    // （React Three Fiberが自動処理）
   }
 }
 ```
 
 ---
 
-## 連打システム
+## タップ追跡システム
 
-### タップトラッキング
+### TapTrackerクラス
 
 ```typescript
+// systems/tap-tracker.ts
+
+/**
+ * タップ速度を追跡するクラス
+ *
+ * 1秒間のスライディングウィンドウでタップ速度を計測
+ */
 class TapTracker {
-  private taps: number[] = [];
-  private readonly WINDOW = 1000; // 1秒間のウィンドウ
+  private taps: number[] = [];        // タイムスタンプ配列
+  private readonly windowSize = 1000; // 1秒（ミリ秒）
 
-  // タップを記録
-  addTap(timestamp: number = Date.now()): void {
-    this.taps.push(timestamp);
-    this.cleanup(timestamp);
+  /**
+   * タップを記録
+   *
+   * @param timestamp - タップ時刻（省略時は現在時刻）
+   */
+  addTap(timestamp?: number): void {
+    const now = timestamp ?? performance.now();
+    this.taps.push(now);
+
+    // 古いタップを削除（1秒以上前）
+    this.removeOldTaps(now);
   }
 
-  // 古いタップを削除
-  private cleanup(currentTime: number): void {
-    const cutoff = currentTime - this.WINDOW;
-    this.taps = this.taps.filter(t => t >= cutoff);
-  }
-
-  // 連打速度を取得（タップ/秒）
+  /**
+   * タップ速度を取得
+   *
+   * @returns タップ/秒
+   */
   getTapRate(): number {
+    const now = performance.now();
+    this.removeOldTaps(now);
+
+    // 1秒間のタップ数
     return this.taps.length;
   }
 
-  // リセット
-  reset(): void {
+  /**
+   * クリア
+   */
+  clear(): void {
     this.taps = [];
   }
-}
-```
 
-### 連打 → 力変換
-
-```typescript
-class TapForceConverter {
-  // 強プッシュの力計算
-  static strongPushForce(tapRate: number): THREE.Vector3 {
-    const baseForce = 0.5;
-    const multiplier = 1.5;
-    const magnitude = baseForce + (tapRate * multiplier);
-
-    // 前方向（z軸負方向）
-    return new THREE.Vector3(0, 0, -magnitude);
-  }
-
-  // 弱プッシュの力計算
-  static weakPushForce(tapRate: number): THREE.Vector3 {
-    const baseForce = 0.3;
-    const multiplier = 0.8;
-    const magnitude = baseForce + (tapRate * multiplier);
-
-    return new THREE.Vector3(0, 0, -magnitude);
-  }
-
-  // 傾き増加（強プッシュ）
-  static strongTippingRate(tapRate: number): number {
-    return tapRate * 0.01;
-  }
-
-  // 傾き増加（弱プッシュ）
-  static weakTippingRate(tapRate: number): number {
-    return tapRate * 0.003;
+  /**
+   * 古いタップを削除
+   *
+   * @param currentTime - 現在時刻
+   */
+  private removeOldTaps(currentTime: number): void {
+    const cutoff = currentTime - this.windowSize;
+    this.taps = this.taps.filter((t) => t > cutoff);
   }
 }
 ```
 
----
+### タップフロー
 
-## 転倒システム
-
-### 転倒判定ロジック
-
-```typescript
-class TippingSystem {
-  checkTipping(actor: PhysicsState): boolean {
-    const threshold = PhysicsConfig.tippingThreshold;
-
-    // 前傾チェック（x軸回転）
-    if (actor.rotation.x > threshold) {
-      actor.isFallen = true;
-      actor.fallDirection = 'forward';
-      return true;
-    }
-
-    // 後傾チェック
-    if (actor.rotation.x < -threshold) {
-      actor.isFallen = true;
-      actor.fallDirection = 'backward';
-      return true;
-    }
-
-    return false;
-  }
-
-  // 傾きを増加
-  addTipping(actor: PhysicsState, amount: number): void {
-    actor.rotation.x += amount;
-    actor.tipping = Math.abs(actor.rotation.x) / PhysicsConfig.tippingThreshold;
-  }
-
-  // 自動復元（毎フレーム）
-  stabilize(actor: PhysicsState): void {
-    if (!actor.isFallen) {
-      actor.rotation.x *= PhysicsConfig.stabilizationRate;
-      actor.tipping *= PhysicsConfig.stabilizationRate;
-    }
-  }
-}
 ```
-
-### 重心計算
-
-```typescript
-class CenterOfGravitySystem {
-  // 重心位置を計算
-  calculateCOG(actor: PhysicsState): THREE.Vector3 {
-    // シンプル実装：体の中心から少し下
-    const cogOffset = new THREE.Vector3(0, -0.3, 0);
-    return actor.position.clone().add(cogOffset);
-  }
-
-  // 支持基底面チェック
-  isStable(cog: THREE.Vector3, basePosition: THREE.Vector3): boolean {
-    // 重心が足元の範囲内にあるか
-    const baseRadius = 0.2; // 足の半径
-    const distance = new THREE.Vector2(
-      cog.x - basePosition.x,
-      cog.z - basePosition.z
-    ).length();
-
-    return distance <= baseRadius;
-  }
-}
-```
-
----
-
-## 衝突判定システム
-
-### 距離ベース衝突
-
-```typescript
-class CollisionSystem {
-  // 2つのアクター間の衝突チェック
-  checkCollision(
-    actor1: PhysicsState,
-    actor2: PhysicsState
-  ): boolean {
-    const distance = actor1.position.distanceTo(actor2.position);
-    const collisionThreshold = 1.0; // 合計半径
-
-    return distance < collisionThreshold;
-  }
-
-  // 衝突応答（シンプルな弾性衝突）
-  resolveCollision(
-    actor1: PhysicsState,
-    actor2: PhysicsState
-  ): void {
-    // 衝突法線ベクトル
-    const normal = actor2.position.clone()
-      .sub(actor1.position)
-      .normalize();
-
-    // 相対速度
-    const relativeVelocity = actor1.velocity.clone()
-      .sub(actor2.velocity);
-
-    // 衝突速度
-    const velocityAlongNormal = relativeVelocity.dot(normal);
-
-    // 既に離れている場合は処理しない
-    if (velocityAlongNormal > 0) return;
-
-    // 反発係数
-    const restitution = 0.5;
-
-    // インパルス計算
-    const impulse = -(1 + restitution) * velocityAlongNormal;
-    const impulseMagnitude = impulse / (1/actor1.mass + 1/actor2.mass);
-
-    // 速度を更新
-    const impulseVector = normal.multiplyScalar(impulseMagnitude);
-    actor1.velocity.add(impulseVector.clone().divideScalar(actor1.mass));
-    actor2.velocity.sub(impulseVector.clone().divideScalar(actor2.mass));
-  }
-}
-```
-
-### 土俵外判定
-
-```typescript
-class RingOutSystem {
-  checkRingOut(actor: PhysicsState): boolean {
-    const distanceFromCenter = new THREE.Vector2(
-      actor.position.x,
-      actor.position.z
-    ).length();
-
-    return distanceFromCenter > PhysicsConfig.ringRadius;
-  }
-}
+User Tap Input
+    ↓
+executeTap() - Zustand action
+    ↓
+tapTracker.addTap() - タイムスタンプ記録
+    ↓
+getTapRate() - 直近1秒のタップ数計算
+    ↓
+applyTapForce(actor, tapRate) - 物理エンジンに力を加える
+    ├→ velocity.z += TAP_FORCE (前方へ)
+    ├→ velocity.y += TAP_BOUNCE (上方へ)
+    └→ angularVelocity += random(-0.1, 0.1) (揺れ)
+        ↓
+updatePhysics(deltaTime) - 物理演算実行
+    ├→ 重力適用
+    ├→ 速度更新
+    ├→ 位置更新
+    ├→ 減衰適用
+    └→ 傾き計算
+        ↓
+checkVictory() - 勝敗判定
+    ├→ 転倒判定（tipping >= 1.0）
+    └→ 土俵外判定（distance > 4.5）
 ```
 
 ---
 
 ## AIシステム
 
-### AI判断エンジン
+### AI行動エンジン
 
 ```typescript
-interface AIDecision {
-  buttonType: 'strong' | 'weak';
-  tapRate: number;  // タップ/秒
-}
+// systems/ai.ts
 
 class AIEngine {
-  private tapTracker: TapTracker;
+  private tapInterval = 0;
+  private nextTapTime = 0;
 
+  /**
+   * AI行動決定
+   *
+   * @param self - AI自身の物理状態
+   * @param opponent - 対戦相手の物理状態
+   * @returns タップすべきか、タップ速度
+   */
   decide(
     self: PhysicsState,
     opponent: PhysicsState
-  ): AIDecision {
+  ): { shouldTap: boolean; tapRate: number } {
     const distance = self.position.distanceTo(opponent.position);
 
-    // 近距離：強プッシュで押し込む
+    // 状態に応じてタップ速度を調整
+    let targetTapRate: number;
+
+    // 近距離: 高速タップ
     if (distance < 2.0) {
-      return {
-        buttonType: 'strong',
-        tapRate: this.randomize(8, 12)
-      };
+      targetTapRate = random(8, 12); // 8～12回/秒
+    }
+    // 自身が傾いている: 安定化のため控えめ
+    else if (self.tipping > 0.6) {
+      targetTapRate = random(4, 6); // 4～6回/秒
+    }
+    // 相手が傾いている: 攻撃チャンス
+    else if (opponent.tipping > 0.5) {
+      targetTapRate = random(10, 15); // 10～15回/秒
+    }
+    // デフォルト: 中程度
+    else {
+      targetTapRate = random(5, 8); // 5～8回/秒
     }
 
-    // 自分が傾いている：安定化
-    if (self.tipping > 0.6) {
-      return {
-        buttonType: 'weak',
-        tapRate: this.randomize(4, 6)
-      };
-    }
+    // タップ間隔計算（秒）
+    this.tapInterval = 1.0 / targetTapRate;
 
-    // 相手が不安定：攻める
-    if (opponent.tipping > 0.5) {
-      return {
-        buttonType: 'strong',
-        tapRate: this.randomize(10, 15)
-      };
-    }
-
-    // デフォルト：弱プッシュで前進
     return {
-      buttonType: 'weak',
-      tapRate: this.randomize(5, 8)
+      shouldTap: true,
+      tapRate: targetTapRate,
     };
   }
 
-  // ランダム性を追加（±20%）
-  private randomize(min: number, max: number): number {
-    const base = (min + max) / 2;
-    const variance = (max - min) / 2 * 0.2;
-    return base + (Math.random() - 0.5) * variance * 2;
-  }
+  /**
+   * フレーム更新
+   *
+   * @param deltaTime - 経過時間
+   * @param executeTap - タップ実行関数
+   */
+  update(deltaTime: number, executeTap: () => void): void {
+    this.nextTapTime -= deltaTime;
 
-  // AIの連打をシミュレート
-  simulateTapping(decision: AIDecision, deltaTime: number): void {
-    // decision.tapRateに基づいて確率的にタップ
-    const tapProbability = decision.tapRate * deltaTime;
-    if (Math.random() < tapProbability) {
-      this.tapTracker.addTap();
+    if (this.nextTapTime <= 0) {
+      executeTap();
+      this.nextTapTime = this.tapInterval;
     }
   }
 }
+```
+
+### AI実行ループ
+
+```typescript
+// React Three FiberのuseFrame内
+useFrame((state, delta) => {
+  const { player, opponent, gameStatus } = useGameStore.getState();
+
+  if (gameStatus !== 'battle') return;
+
+  // AI行動決定
+  const decision = aiEngine.decide(opponent, player);
+
+  // AIタップ実行
+  if (decision.shouldTap) {
+    aiEngine.update(delta, () => {
+      // 相手にタップ力を適用
+      applyTapForce(opponent, decision.tapRate);
+    });
+  }
+
+  // 物理演算更新
+  useGameStore.getState().updatePhysics(delta);
+});
 ```
 
 ---
 
 ## レンダリングシステム
 
-### メインゲームループ
+### React Three Fiberゲームループ
 
 ```typescript
-class GameLoop {
-  private lastTime = 0;
-  private accumulator = 0;
-  private readonly FIXED_DELTA = 1/60;  // 60fps固定
+// scene/Game.tsx
+import { useFrame } from '@react-three/fiber';
+import { useGameStore } from '../state/gameStore';
 
-  update(currentTime: number): void {
-    const deltaTime = (currentTime - this.lastTime) / 1000;
-    this.lastTime = currentTime;
+export function Game() {
+  const updatePhysics = useGameStore((s) => s.updatePhysics);
+  const checkVictory = useGameStore((s) => s.checkVictory);
 
-    // 可変フレームレート対応
-    this.accumulator += deltaTime;
+  // ゲームループ（60fps）
+  useFrame((state, delta) => {
+    // 1. 物理演算更新
+    updatePhysics(delta);
 
-    // 固定タイムステップで物理更新
-    while (this.accumulator >= this.FIXED_DELTA) {
-      this.physicsEngine.update(this.FIXED_DELTA);
-      this.accumulator -= this.FIXED_DELTA;
-    }
+    // 2. AI更新
+    updateAI(delta);
 
-    // レンダリング（毎フレーム）
-    this.render();
+    // 3. 勝利判定
+    checkVictory();
+  });
 
-    // 次フレーム
-    requestAnimationFrame(this.update.bind(this));
-  }
+  return (
+    <>
+      <Ring />
+      <Sumo actor={player} isPlayer={true} />
+      <Sumo actor={opponent} isPlayer={false} />
+    </>
+  );
 }
 ```
 
-### Three.js統合
+### Three.jsシーン設定
 
 ```typescript
-class SceneManager {
-  private scene: THREE.Scene;
-  private camera: THREE.PerspectiveCamera;
-  private renderer: THREE.WebGLRenderer;
+// App.tsx
+import { Canvas } from '@react-three/fiber';
 
-  initialize(): void {
-    // シーン作成
-    this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0f380f); // レトロ背景
+function App() {
+  return (
+    <Canvas
+      camera={{
+        position: [8, 8, 8],
+        fov: 45,
+      }}
+      gl={{
+        antialias: false, // レトロ感のためアンチエイリアスなし
+        powerPreference: 'high-performance',
+      }}
+    >
+      {/* ライティング */}
+      <ambientLight intensity={0.5} />
+      <directionalLight position={[10, 10, 5]} />
 
-    // カメラ設定（斜め上から）
-    this.camera = new THREE.PerspectiveCamera(
-      45,  // FOV
-      window.innerWidth / window.innerHeight,  // アスペクト比
-      0.1,  // Near
-      1000  // Far
-    );
-    this.camera.position.set(0, 10, 12);
-    this.camera.lookAt(0, 0, 0);
+      {/* ゲームシーン */}
+      <Game />
+    </Canvas>
+  );
+}
+```
 
-    // レンダラー設定
-    this.renderer = new THREE.WebGLRenderer({
-      antialias: false,  // レトロ感のためアンチエイリアスなし
-      powerPreference: 'high-performance'
-    });
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.setSize(window.innerWidth, window.innerHeight);
+---
 
-    // ライティング（シンプル）
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
-    this.scene.add(ambientLight);
+## 3Dモデルシステム
 
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.4);
-    directionalLight.position.set(5, 10, 5);
-    this.scene.add(directionalLight);
-  }
+### 力士コンポーネント（Capsule）
 
-  render(): void {
-    this.renderer.render(this.scene, this.camera);
-  }
+```typescript
+// scene/models/Sumo.tsx
+import { useGameStore } from '../../state/gameStore';
+
+interface SumoProps {
+  actor: PhysicsState;
+  isPlayer: boolean;
+}
+
+export function Sumo({ actor, isPlayer }: SumoProps): JSX.Element {
+  // 傾き度に応じた色変更
+  const color = getTippingColor(actor.tipping);
+
+  return (
+    <mesh
+      position={actor.position}
+      rotation={actor.rotation}
+    >
+      {/* カプセルジオメトリ */}
+      <capsuleGeometry args={[0.5, 1.0, 8, 16]} />
+
+      {/* マテリアル */}
+      <meshStandardMaterial
+        color={color}
+        flatShading // レトロなポリゴン感
+      />
+    </mesh>
+  );
+}
+
+/**
+ * 傾き度に応じた色を返す
+ */
+function getTippingColor(tipping: number): string {
+  if (tipping < 0.3) return '#00ff00'; // 安定（緑）
+  if (tipping < 0.7) return '#ffff00'; // 警告（黄）
+  return '#ff0000';                    // 危険（赤）
+}
+```
+
+### 土俵コンポーネント
+
+```typescript
+// scene/models/Ring.tsx
+export function Ring(): JSX.Element {
+  return (
+    <group>
+      {/* 土俵本体 */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <cylinderGeometry args={[4.5, 4.5, 0.2, 32]} />
+        <meshStandardMaterial color="#8b4513" />
+      </mesh>
+
+      {/* 土俵縁（トーラス） */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]}>
+        <torusGeometry args={[4.5, 0.1, 16, 100]} />
+        <meshStandardMaterial color="#ffd700" />
+      </mesh>
+    </group>
+  );
+}
+```
+
+---
+
+## UIシステム
+
+### HUDコンポーネント
+
+```typescript
+// ui/components/HUD.tsx
+export function HUD() {
+  const player = useGameStore((s) => s.player);
+  const opponent = useGameStore((s) => s.opponent);
+  const gameStatus = useGameStore((s) => s.gameStatus);
+
+  return (
+    <div className="hud">
+      <div className="hud-top">
+        {/* プレイヤー傾きインジケーター */}
+        <TippingIndicator
+          label="プレイヤー"
+          tipping={player.tipping}
+          isPlayer={true}
+        />
+
+        {/* 対戦相手傾きインジケーター */}
+        <TippingIndicator
+          label="対戦相手"
+          tipping={opponent.tipping}
+          isPlayer={false}
+        />
+      </div>
+
+      {/* 試合ステータス */}
+      <div className="hud-status">
+        {gameStatus === 'title' && 'トントン相撲'}
+        {gameStatus === 'battle' && '勝負！'}
+        {gameStatus === 'result' && '勝敗決定'}
+      </div>
+    </div>
+  );
+}
+```
+
+### 傾きインジケーター
+
+```typescript
+// ui/components/TippingIndicator.tsx
+interface TippingIndicatorProps {
+  label: string;
+  tipping: number; // 0-1
+  isPlayer: boolean;
+}
+
+export function TippingIndicator({
+  label,
+  tipping,
+  isPlayer,
+}: TippingIndicatorProps) {
+  const percentage = Math.min(100, tipping * 100);
+  const color = getTippingColor(tipping);
+
+  return (
+    <div className="tipping-indicator">
+      <span className="tipping-label">{label}</span>
+
+      {/* 傾きバー */}
+      <div className="tipping-bar">
+        <div
+          className="tipping-fill"
+          style={{
+            width: `${percentage}%`,
+            backgroundColor: color,
+          }}
+        />
+      </div>
+
+      {/* パーセンテージ表示 */}
+      <span className="tipping-percentage">
+        {Math.round(percentage)}%
+      </span>
+    </div>
+  );
+}
+```
+
+### トンボタンコンポーネント
+
+```typescript
+// ui/components/TonButton.tsx
+export function TonButton() {
+  const executeTap = useGameStore((s) => s.executeTap);
+  const gameStatus = useGameStore((s) => s.gameStatus);
+
+  const isDisabled = gameStatus !== 'battle';
+
+  return (
+    <button
+      className="ton-button"
+      onClick={executeTap}
+      disabled={isDisabled}
+    >
+      トン！
+    </button>
+  );
 }
 ```
 
@@ -522,28 +816,24 @@ class SceneManager {
 **目標**: 1.5MB以下
 
 **達成方法**：
-- ✅ 物理エンジンライブラリ不使用（~200KB削減）
-- ✅ カスタム物理実装（~5KB追加）
-- ✅ Three.js最小限の機能のみ
+- ✅ 物理エンジンライブラリ不使用（~700KB削減）
+- ✅ シンプルなカスタム物理演算（~100行 ≈ 5KB）
+- ✅ Three.js + @react-three/fiber（~500KB）
+- ✅ Zustand（~3KB）
+- ✅ 基本ジオメトリのみ（GLTFモデル不使用）
 - ✅ Tree-shaking有効
 
 ### メモリ管理
 
 ```typescript
-class ObjectPool<T> {
-  private pool: T[] = [];
+// Vector3の再利用
+const tempVector = new Vector3();
 
-  acquire(factory: () => T): T {
-    return this.pool.pop() || factory();
-  }
-
-  release(obj: T): void {
-    this.pool.push(obj);
-  }
+function normalize(vector: Vector3): Vector3 {
+  tempVector.copy(vector);
+  tempVector.normalize();
+  return tempVector.clone();
 }
-
-// Vector3オブジェクトプール
-const vector3Pool = new ObjectPool<THREE.Vector3>();
 ```
 
 ### フレームレート維持
@@ -551,58 +841,86 @@ const vector3Pool = new ObjectPool<THREE.Vector3>();
 **目標**: 30fps以上（モバイル）
 
 **最適化**：
-- 固定タイムステップ（60fps物理）
-- 可変フレームレート対応
-- 不要なレンダリングスキップ
+- useFrame（60fps固定）
+- React.memo（不要な再レンダリング防止）
+- useMemo/useCallback（計算キャッシュ）
 - シンプルなジオメトリ（低ポリゴン）
+- 影なし（パフォーマンス優先）
+
+```typescript
+// React.memo最適化
+export const TippingIndicator = React.memo(
+  TippingIndicatorComponent,
+  (prev, next) => {
+    return prev.tipping === next.tipping;
+  }
+);
+```
+
+---
+
+## 型定義
+
+### ゲーム型
+
+```typescript
+// types/game.ts
+export interface PhysicsState {
+  position: Vector3;
+  velocity: Vector3;
+  angularVelocity: number;
+  rotation: Euler;
+  tipping: number;
+  isFallen: boolean;
+}
+
+export type GameStatus = 'title' | 'battle' | 'result';
+
+export type Winner = 'player' | 'opponent' | null;
+
+export interface PhysicsConstants {
+  GRAVITY: number;
+  DAMPING: number;
+  TAP_FORCE: number;
+  TAP_BOUNCE: number;
+  FALL_ANGLE: number;
+  MIN_FALL_VELOCITY: number;
+  RING_RADIUS: number;
+}
+```
 
 ---
 
 ## デバッグ機能
 
-### 物理デバッグ表示
+### 開発モードデバッグ表示
 
 ```typescript
-class PhysicsDebugger {
-  private helpers: THREE.Object3D[] = [];
+// components/DebugOverlay.tsx
+export function DebugOverlay() {
+  if (!import.meta.env.DEV) return null;
 
-  // 力ベクトルを可視化
-  showForces(actor: PhysicsState, forces: THREE.Vector3[]): void {
-    forces.forEach(force => {
-      const arrow = new THREE.ArrowHelper(
-        force.clone().normalize(),
-        actor.position,
-        force.length(),
-        0xff0000
-      );
-      this.helpers.push(arrow);
-      this.scene.add(arrow);
-    });
-  }
+  const player = useGameStore((s) => s.player);
+  const opponent = useGameStore((s) => s.opponent);
+  const tapRate = useGameStore((s) => s.tapTracker.getTapRate());
 
-  // 重心を可視化
-  showCenterOfGravity(cog: THREE.Vector3): void {
-    const sphere = new THREE.Mesh(
-      new THREE.SphereGeometry(0.1),
-      new THREE.MeshBasicMaterial({ color: 0x00ff00 })
-    );
-    sphere.position.copy(cog);
-    this.helpers.push(sphere);
-    this.scene.add(sphere);
-  }
-
-  // デバッグ表示をクリア
-  clear(): void {
-    this.helpers.forEach(h => this.scene.remove(h));
-    this.helpers = [];
-  }
+  return (
+    <div className="debug-overlay">
+      <div>Player Tipping: {(player.tipping * 100).toFixed(1)}%</div>
+      <div>Opponent Tipping: {(opponent.tipping * 100).toFixed(1)}%</div>
+      <div>Tap Rate: {tapRate} taps/sec</div>
+      <div>Player Pos: ({player.position.x.toFixed(2)}, {player.position.z.toFixed(2)})</div>
+      <div>Opponent Pos: ({opponent.position.x.toFixed(2)}, {opponent.position.z.toFixed(2)})</div>
+    </div>
+  );
 }
 ```
 
 ### パフォーマンスモニター
 
 ```typescript
-class PerformanceMonitor {
+// utils/PerformanceMonitor.ts
+export class PerformanceMonitor {
   private frames = 0;
   private lastTime = performance.now();
 
@@ -611,8 +929,13 @@ class PerformanceMonitor {
     const currentTime = performance.now();
 
     if (currentTime >= this.lastTime + 1000) {
-      const fps = Math.round(this.frames * 1000 / (currentTime - this.lastTime));
-      console.log(`FPS: ${fps}`);
+      const fps = Math.round(
+        (this.frames * 1000) / (currentTime - this.lastTime)
+      );
+
+      if (import.meta.env.DEV) {
+        console.log(`FPS: ${fps}`);
+      }
 
       this.frames = 0;
       this.lastTime = currentTime;
@@ -627,31 +950,62 @@ class PerformanceMonitor {
 
 ### ユニットテスト
 
-**物理計算のテスト**：
+**物理エンジンのテスト**：
 
 ```typescript
-describe('PhysicsEngine', () => {
-  it('should apply gravity correctly', () => {
-    const actor = createTestActor();
-    const engine = new PhysicsEngine();
+import { updateActorPhysics, applyTapForce } from '../physics/tontonzumo-physics';
 
-    engine.update(actor, 1.0); // 1秒後
+describe('Physics Engine', () => {
+  it('should apply gravity', () => {
+    const actor: PhysicsState = {
+      position: new Vector3(0, 1, 0),
+      velocity: new Vector3(0, 0, 0),
+      angularVelocity: 0,
+      rotation: new Euler(0, 0, 0),
+      tipping: 0,
+      isFallen: false,
+    };
 
-    // y座標が下がっているはず（重力の影響）
-    expect(actor.position.y).toBeLessThan(0);
+    const deltaTime = 1 / 60; // 1フレーム
+    const updated = updateActorPhysics(actor, deltaTime);
+
+    // 重力で速度が減少
+    expect(updated.velocity.y).toBeLessThan(0);
   });
 
-  it('should stop at friction', () => {
-    const actor = createTestActor();
-    actor.velocity.set(10, 0, 0);
+  it('should apply tap force', () => {
+    const actor: PhysicsState = {
+      position: new Vector3(0, 0, 0),
+      velocity: new Vector3(0, 0, 0),
+      angularVelocity: 0,
+      rotation: new Euler(0, 0, 0),
+      tipping: 0,
+      isFallen: false,
+    };
 
-    // 摩擦で減速
-    for (let i = 0; i < 100; i++) {
-      engine.update(actor, 0.016); // 60fps
-    }
+    applyTapForce(actor, 10); // 10 taps/sec
 
-    // ほぼ停止しているはず
-    expect(actor.velocity.length()).toBeLessThan(0.1);
+    // Z方向（前方）に力が加わる
+    expect(actor.velocity.z).toBeGreaterThan(0);
+
+    // Y方向（上方）にも跳ねる
+    expect(actor.velocity.y).toBeGreaterThan(0);
+  });
+
+  it('should detect tipping', () => {
+    const actor: PhysicsState = {
+      position: new Vector3(0, 0, 0),
+      velocity: new Vector3(0, 0, 0),
+      angularVelocity: 0,
+      rotation: new Euler(Math.PI / 2, 0, 0), // 90°傾き
+      tipping: 0,
+      isFallen: false,
+    };
+
+    const updated = updateActorPhysics(actor, 1 / 60);
+
+    // 傾き度が1.0以上（60°以上）
+    expect(updated.tipping).toBeGreaterThan(1.0);
   });
 });
 ```
@@ -662,24 +1016,30 @@ describe('PhysicsEngine', () => {
 
 ```typescript
 describe('Game Flow', () => {
-  it('should detect ring out', () => {
-    const game = new Game();
-    game.player.position.set(10, 0, 0); // 土俵外
+  it('should detect tipping victory', () => {
+    const { result } = renderHook(() => useGameStore());
 
-    game.update(0.016);
+    // 相手を60°以上傾ける
+    act(() => {
+      result.current.opponent.rotation.x = Math.PI / 2; // 90°
+      result.current.checkVictory();
+    });
 
-    expect(game.isGameOver()).toBe(true);
-    expect(game.winner).toBe('opponent');
+    expect(result.current.winner).toBe('player');
+    expect(result.current.gameStatus).toBe('result');
   });
 
-  it('should detect tipping', () => {
-    const game = new Game();
-    game.player.rotation.x = Math.PI / 3; // 60度傾き
+  it('should detect ring out victory', () => {
+    const { result } = renderHook(() => useGameStore());
 
-    game.update(0.016);
+    // 相手を土俵外に押し出す
+    act(() => {
+      result.current.opponent.position.set(10, 0, 0);
+      result.current.checkVictory();
+    });
 
-    expect(game.isGameOver()).toBe(true);
-    expect(game.winner).toBe('opponent');
+    expect(result.current.winner).toBe('player');
+    expect(result.current.gameStatus).toBe('result');
   });
 });
 ```
@@ -688,16 +1048,12 @@ describe('Game Flow', () => {
 
 ## セキュリティ考慮事項
 
-### クライアントサイドのみ
+### クライアントサイド実行
 
-MVPでは完全にクライアントサイド実行：
+完全にクライアントサイドで実行：
 - サーバー不要
 - localStorageで設定保存のみ
 - 機密情報なし
-
-**将来拡張**（オンライン対戦時）：
-- サーバーサイド物理検証
-- チート対策（クライアント検証のみでは不十分）
 
 ---
 
@@ -708,35 +1064,131 @@ MVPでは完全にクライアントサイド実行：
 - Node.js 18以上
 - TypeScript 5.0以上
 - Vite 5.0以上
+- React 18以上
 - Three.js r150以上
+- Zustand 4.0以上
 
 ### ビルド設定
 
 ```typescript
 // vite.config.ts
 export default defineConfig({
+  plugins: [react()],
   build: {
     target: 'es2019',
     minify: 'terser',
     terserOptions: {
       compress: {
-        drop_console: true  // 本番ビルドでconsoleを削除
-      }
-    }
-  }
+        drop_console: true, // 本番ビルドでconsoleを削除
+      },
+    },
+  },
 });
+```
+
+### 依存関係
+
+```json
+{
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "three": "^0.150.0",
+    "@react-three/fiber": "^8.0.0",
+    "@react-three/drei": "^9.0.0",
+    "zustand": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.17",
+    "@types/three": "^0.150.0",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "@vitejs/plugin-react": "^4.3.4"
+  }
+}
+```
+
+---
+
+## アーキテクチャ図
+
+### システム構成
+
+```
+┌─────────────────────────────────────────┐
+│            React UI Layer               │
+│  ┌──────────┐  ┌──────────┐            │
+│  │   HUD    │  │トンボタン│            │
+│  └──────────┘  └──────────┘            │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│       Zustand State Management          │
+│  ┌──────────────────────────────────┐   │
+│  │ PhysicsState (位置・速度・傾き)  │   │
+│  └──────────────────────────────────┘   │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│         Physics Engine (~100行)         │
+│  ┌──────────┐  ┌──────────┐            │
+│  │重力・慣性│  │傾き計算  │            │
+│  └──────────┘  └──────────┘            │
+└─────────────────┬───────────────────────┘
+                  │
+┌─────────────────┴───────────────────────┐
+│      React Three Fiber (3D Scene)       │
+│  ┌──────────┐  ┌──────────┐            │
+│  │  Player  │  │ Opponent │  ┌────┐   │
+│  │(Capsule) │  │(Capsule) │  │Ring│   │
+│  └──────────┘  └──────────┘  └────┘   │
+└─────────────────────────────────────────┘
+```
+
+### データフロー
+
+```
+User Input (トンボタンClick)
+    ↓
+executeTap() - Zustand action
+    ↓
+tapTracker.addTap() - タップ記録
+    ↓
+applyTapForce() - 物理エンジンに力を加える
+    ↓
+updatePhysics() - 固定タイムステップで物理更新
+    ├→ 重力適用
+    ├→ 速度更新
+    ├→ 位置更新
+    ├→ 減衰
+    └→ 傾き計算
+        ↓
+checkVictory() - 勝敗判定
+    ├→ 転倒判定（60°以上）
+    └→ 土俵外判定（4.5 units以上）
+        ↓
+React Re-render (HUD, 3D Scene)
+    ↓
+Three.js Rendering
 ```
 
 ---
 
 ## 参考資料
 
-**物理シミュレーション**：
-- [Game Physics Engine Development](https://www.amazon.com/dp/0123819768)
+**React Three Fiber**：
+- [Official Documentation](https://docs.pmnd.rs/react-three-fiber)
+- [Drei Helpers](https://github.com/pmndrs/drei)
+
+**Zustand**：
+- [Official Documentation](https://docs.pmnd.rs/zustand)
+
+**Three.js**：
 - [Three.js Documentation](https://threejs.org/docs/)
 
-**ゲームループ**：
+**物理シミュレーション**：
 - [Fix Your Timestep!](https://gafferongames.com/post/fix_your_timestep/)
+- [Game Physics Engine Development](https://www.amazon.com/dp/0123819768)
 
 **パフォーマンス**：
 - [Web Performance Working Group](https://www.w3.org/webperf/)
