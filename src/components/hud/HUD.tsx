@@ -2,16 +2,16 @@
  * HUD (Heads-Up Display) Component
  *
  * Complete game HUD showing:
- * - Player HP (left)
- * - Opponent HP (right)
- * - Gauge (center bottom)
+ * - Player tipping indicator (left)
+ * - Opponent tipping indicator (right)
  *
  * Retro 8-bit styling
+ * Based on TECHNICAL_DESIGN.md specification.
  */
 
-import HPBar from './HPBar';
-import GaugeBar from './GaugeBar';
-import { usePlayer, useOpponent, usePlayerGauge } from '../../state/gameStore';
+import React from 'react';
+import { TippingIndicator } from './TippingIndicator';
+import { usePlayer, useOpponent } from '../../state/gameStore';
 
 /**
  * HUD Props
@@ -23,46 +23,29 @@ export interface HUDProps {
 
 /**
  * Complete HUD Component
- * Overlays game screen with HP bars and gauge
+ * Overlays game screen with tipping indicators
  */
 export default function HUD({ className = '' }: HUDProps) {
   const player = usePlayer();
   const opponent = useOpponent();
-  const gauge = usePlayerGauge();
 
   return (
     <div className={`hud-overlay ${className}`}>
-      {/* Top row: HP bars */}
+      {/* Top row: Tipping indicators */}
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'flex-start',
-          padding: 'var(--spacing-md)',
-          gap: 'var(--spacing-md)',
+          padding: 'var(--spacing-md, 16px)',
+          gap: 'var(--spacing-md, 16px)',
         }}
       >
-        {/* Player HP (left) */}
-        <HPBar hp={player.hp} maxHp={player.maxHp} label="あなた" />
+        {/* Player tipping (left) */}
+        <TippingIndicator actor={player} label="あなた" />
 
-        {/* Opponent HP (right) */}
-        <HPBar hp={opponent.hp} maxHp={opponent.maxHp} label="あいて" />
-      </div>
-
-      {/* Bottom center: Gauge - positioned above controls */}
-      <div
-        style={{
-          position: 'absolute',
-          bottom: '100px',
-          left: '50%',
-          transform: 'translateX(-50%)',
-          width: '85%',
-          maxWidth: '320px',
-          display: 'flex',
-          justifyContent: 'center',
-        }}
-      >
-        <GaugeBar gauge={gauge} />
+        {/* Opponent tipping (right) */}
+        <TippingIndicator actor={opponent} label="あいて" />
       </div>
     </div>
   );

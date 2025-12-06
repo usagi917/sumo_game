@@ -5,15 +5,17 @@
  * - 3D scene (background)
  * - HUD (overlay)
  * - Controls (overlay)
+ *
+ * Based on TECHNICAL_DESIGN.md specification.
  */
 
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import GameScene from '../scene/GameScene';
 import HUD from '../hud/HUD';
-import Controls from '../controls/Controls';
+import { TonButton } from '../controls/TonButton';
 import { useGameActions, useGameStore } from '../../state/gameStore';
-import { makeAIDecision, resetAI } from '../../systems/ai';
-import { GAME_CONSTANTS } from '../../types/game';
+import { AIEngine } from '../../systems/ai';
+import { applyTapForce } from '../../physics/tontonzumo-physics';
 
 /**
  * Game Screen Props
@@ -23,67 +25,48 @@ export interface GameScreenProps {
   className?: string;
 }
 
+// AI engine instance (singleton for game)
+const aiEngine = new AIEngine();
+
 /**
  * Game Screen Component
- * Complete battle screen with scene, HUD, and controls
+ * Complete battle screen with physics-based game loop
  */
 export default function GameScreen({ className = '' }: GameScreenProps) {
-  const { updateCooldowns, executeAction, setActorPosition } = useGameActions();
+  const { updatePhysics } = useGameActions();
 
-  // Game loop effect
+  // Physics game loop effect
   useEffect(() => {
     // Reset AI state when game starts
-    resetAI();
+    aiEngine.reset();
 
     let lastTime = performance.now();
-    let lastAITime = performance.now();
-    const AI_UPDATE_INTERVAL = 500; // Update AI every 500ms
     let animationId: number;
 
     const gameLoop = () => {
       const state = useGameStore.getState();
       const currentTime = performance.now();
-      const deltaTime = currentTime - lastTime;
+      const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
       lastTime = currentTime;
 
-      // Update cooldowns (convert to seconds for calculations)
-      updateCooldowns(deltaTime);
-
-      // Update AI periodically
-      if (currentTime - lastAITime >= AI_UPDATE_INTERVAL) {
-        lastAITime = currentTime;
-
-        // Only update AI if game is ongoing
-        if (state.gameStatus === 'battle' && state.winner === null) {
-          // Make AI decision using opponent's gauge
-          const aiDecision = makeAIDecision(
-            state.opponent,
-            state.player,
-            state.opponentGauge,
-            state.cooldowns,
-            currentTime
-          );
-
-          // Execute AI action if any
-          if (aiDecision.action) {
-            executeAction('opponent', aiDecision.action);
-          }
-
-          // Execute AI movement if any
-          if (aiDecision.moveDirection) {
-            const deltaTimeSeconds = deltaTime / 1000; // Convert ms to seconds
-            const moveSpeed = GAME_CONSTANTS.MOVEMENT_SPEED;
-            const movement = aiDecision.moveDirection
-              .clone()
-              .multiplyScalar(moveSpeed * deltaTimeSeconds);
-            const newPosition = state.opponent.position.clone().add(movement);
-            setActorPosition('opponent', newPosition);
-          }
-        }
-      }
-
-      // Continue loop if game is active
+      // Only update during battle
       if (state.gameStatus === 'battle') {
+        // Update physics simulation
+        updatePhysics(deltaTime);
+
+        // Update AI
+        const aiDecision = aiEngine.decide(
+          state.opponent,
+          state.player,
+          currentTime
+        );
+
+        if (aiDecision.shouldTap) {
+          // AI executes tap
+          applyTapForce(state.opponent, aiDecision.tapRate);
+        }
+
+        // Continue loop
         animationId = requestAnimationFrame(gameLoop);
       }
     };
@@ -97,7 +80,7 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
         cancelAnimationFrame(animationId);
       }
     };
-  }, [updateCooldowns, executeAction, setActorPosition]);
+  }, [updatePhysics]);
 
   return (
     <div className={`full-screen ${className}`} style={{ position: 'relative' }}>
@@ -107,8 +90,20 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
       {/* HUD (overlay) */}
       <HUD />
 
-      {/* Controls (overlay) */}
-      <Controls />
+      {/* Controls (overlay) - positioned at bottom */}
+      <div
+        style={{
+          position: 'absolute',
+          bottom: 0,
+          left: 0,
+          right: 0,
+          display: 'flex',
+          justifyContent: 'center',
+          padding: '20px',
+        }}
+      >
+        <TonButton />
+      </div>
     </div>
   );
 }

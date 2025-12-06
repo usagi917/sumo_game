@@ -1,0 +1,62 @@
+/**
+ * Ton Button Styles
+ *
+ * Large, tap-friendly button for tonton sumo gameplay.
+ */
+
+.ton-button-container {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 20px;
+}
+
+.ton-button {
+  /* Size: Large for easy tapping (minimum 100x100px) */
+  min-width: 200px;
+  min-height: 100px;
+  padding: 20px 40px;
+
+  /* Retro styling */
+  background-color: var(--retro-accent, #8b4513);
+  border: 4px solid var(--retro-fg, #f4e4c1);
+  border-radius: 8px;
+  box-shadow: 0 4px 0 var(--retro-dark, #1a0f08);
+
+  /* Typography */
+  font-family: 'M PLUS 1', sans-serif;
+  font-size: 32px;
+  font-weight: bold;
+  color: var(--retro-fg, #f4e4c1);
+
+  /* Interaction */
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.1s ease, box-shadow 0.1s ease;
+}
+
+.ton-button:hover {
+  background-color: #a0522d;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 0 var(--retro-dark, #1a0f08);
+}
+
+.ton-button:active {
+  /* Press down effect */
+  transform: translateY(2px);
+  box-shadow: 0 2px 0 var(--retro-dark, #1a0f08);
+}
+
+.ton-button-text {
+  display: block;
+  text-shadow: 2px 2px 0 rgba(0, 0, 0, 0.3);
+}
+
+/* Mobile optimization */
+@media (max-width: 768px) {
+  .ton-button {
+    min-width: 150px;
+    min-height: 80px;
+    font-size: 28px;
+  }
+}
