@@ -25,6 +25,11 @@
   /* Special Colors */
   --gauge-blue: #00ffff;    /* ゲージ色 */
 
+  /* Tipping Indicator Colors (wrestler balance状態) */
+  --tipping-safe: #4caf50;     /* 安全 (Safe: <50% tipping) - Green */
+  --tipping-warning: #ff9800;  /* 警告 (Warning: 50-80% tipping) - Orange */
+  --tipping-danger: #f44336;   /* 危険 (Danger: >80% tipping) - Red */
+
   /* UI Spacing */
   --spacing-xs: 4px;
   --spacing-sm: 8px;

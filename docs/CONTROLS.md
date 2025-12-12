@@ -1,103 +1,113 @@
 # 操作システム仕様
 
-レトロ風トントン相撲バトルゲームの操作システムとUIインタラクションを説明します。
+レトロ風相撲バトルゲームの操作システムとUIインタラクションを説明します。
 
 ## 設計原則
 
 ### モバイルファースト
 
 - タッチ操作専用設計
-- 大型連打ボタン（最低100×100px）
-- 最小タッチターゲット: 100×100px（連打しやすさ重視）
-- 誤タップ防止の配慮
+- 大型タップボタン（最低100×100px）
+- 最小タッチターゲット: 100×100px
+- 連打しやすい配置と形状
 
-### 極限までシンプルな操作
+### シンプルな連打システム
 
-- ボタン1つのみ（「トン！」連打ボタン）
-- 複雑なジェスチャー不要
-- 画面下部中央に大きく配置
-- 連打速度とリズムで戦略性を持たせる
+- **1つの大きなボタン**のみ（「トン！」）
+- 連打すればするほど強い力で押せる
+- タップレート（1秒あたりのタップ数）を測定
+- 物理エンジンが自動的に挙動を決定
+
+---
 
 ## 入力システム
 
-### トン！ボタンシステム
+### タップボタンシステム
 
 ```typescript
-interface TontonButtonProps {
-  disabled: boolean;       // ゲーム停止中など
-  onTap: () => void;       // タップ時のコールバック
+interface TappingButtonProps {
+  onTap: () => void;
+  tapRate: number;  // 現在のタップレート（表示用）
 }
 ```
 
 **イベントフロー**:
 
 ```
-Button Tap
+User Tap
     ↓
-物理エンジンに力を加える
-    ├→ velocity.z += TAP_FORCE (前方へ)
-    ├→ velocity.y += TAP_BOUNCE (上方へ)
-    └→ angularVelocity += random(-0.1, 0.1) (揺れ)
+TappingButton Component
+    ↓
+tapTracker.addTap(timestamp)
+    ↓
+gameStore.executeTap()
+    ├→ tapRate = tapTracker.getTapRate()
+    ├→ applyTapForce(player, tapRate)
+    │   ├→ Apply forward force (TAP_FORCE × tapRate)
+    │   ├→ Apply bounce (TAP_BOUNCE × tapRate)
+    │   └→ Apply random angular velocity
+    └→ Update player physics state
         ↓
-物理演算で力士が動く
-    ├→ 重力適用 (velocity.y -= GRAVITY * dt)
-    ├→ 位置更新 (position += velocity * dt)
-    ├→ 減衰適用 (velocity *= DAMPING)
-    └→ 回転更新 (rotation.x += angularVelocity * dt)
+Physics Engine (毎フレーム)
+    ├→ Apply gravity
+    ├→ Apply damping
+    ├→ Update position/rotation
+    ├→ Check tipping (転倒判定)
+    └→ Check ring-out (土俵外判定)
         ↓
-勝敗判定
-    ├→ 土俵外判定 (distance > RING_RADIUS)
-    └→ 転倒判定 (rotation.x > FALL_ANGLE)
+UI Update (React)
+    ├→ Display new tapRate
+    └→ Display tipping gauge
 ```
 
 ### タップ処理フロー
 
 ```typescript
-// TontonControls.tsx から
+// TappingButton.tsx から
 function handleTap() {
   // ゲーム停止中は実行しない
-  if (gameState !== 'playing') return;
+  if (gameState !== 'battle') return;
 
-  // 物理エンジンに力を加える
-  applyTapForce(playerFighter, {
-    forward: TAP_FORCE,    // 2.0 N
-    upward: TAP_BOUNCE,    // 0.5 N
-    rotation: random(-0.1, 0.1)  // ランダムな揺れ
-  });
+  // タップを記録
+  tapTracker.addTap();
+
+  // タップ力を適用
+  executeTap();
 
   // 視覚フィードバック
   playTapAnimation();
 
   // サウンド/触覚フィードバック（optional）
   playTapSound();
-  vibrate(10);  // 軽い振動
+  vibrate(10);
 }
 ```
+
+---
 
 ## トン！ボタン
 
 ### ボタン仕様（レトロスタイル）
 
-**単一の大型連打ボタン**:
+**中央大型ボタン**:
 
-#### トン！ボタン
-
-- **ラベル**: 「トン！」（M PLUS 1フォント、大きく明瞭）
-- **色**: ベース色（#f4e4c1 - まわしクリーム）
-- **配置**: 画面下部中央
-- **サイズ**: 最低100×100px（連打しやすさ重視）
+- **ラベル**: 「トン！」（M PLUS 1フォント、48px、太字）
+- **色**: #ffd700（ゴールド）
+- **配置**: 画面中央下部（親指が届きやすい位置）
+- **サイズ**: 最低100×100px（連打しやすい大きさ）
+- **形状**: 円形（border-radius: 50%）
 - **動作**:
-  - タップごとに物理エンジンに力を加える
-  - 前方力: 2.0 N
-  - 上方力: 0.5 N
-  - 微小な揺れ: ±0.1 rad/s（ランダム）
-- **特徴**: 連打速度とリズムで戦略性
+  - タップ1回あたり: TAP_FORCE (0.3) の前方向力
+  - タップ1回あたり: TAP_BOUNCE (0.2) の上向き跳ね返り
+  - ランダムな横揺れ（角速度）
+  - タップレートが高いほど強い力
+- **表示**: 現在のタップレート（例: "5 taps/s"）
 
 **レトロデザイン特徴**:
-- 太い境界線（6px、存在感重視）
+- 太い境界線（4px）
 - M PLUS 1フォント使用（日本語対応、レトロ風）
-- 特大ラベル（24px以上）
-- タップ時に即座にスケール変化
+- 大きなラベル（48px）
+- タップ時に即座にスケール変化（0.9倍）
 
 ### ボタン配置
 
@@ -105,72 +115,73 @@ function handleTap() {
 画面レイアウト:
 
 ┌────────────────────────┐
-│  試合ステータス         │ ← HUD（タイマー、プレイヤー名など）
+│  転倒ゲージ（両者）     │ ← HUD（転倒度表示）
 ├────────────────────────┤
 │                        │
 │      ゲーム画面         │
 │     (3D土俵シーン)      │
-│   物理演算で力士が動く   │
+│     力士が戦う          │
 │                        │
-└────────────────────────┘
-│       [トン！]         │ ← 大型連打ボタン（中央配置）
+│                        │
+│        ┌──┐            │
+│        │トン│           │ ← 大型タップボタン（中央下部）
+│        │！│            │
+│        └──┘            │
+│     5 taps/s           │ ← タップレート表示
 └────────────────────────┘
 ```
 
 **配置仕様**:
 
-- 画面下部中央に固定
-- ボタン1つのみ
-- 親指が届く範囲（画面下から20%以内）
-- サイズ: 最低100×100px（連打を考慮）
+- 画面下部に固定
+- 中央配置（左右均等マージン）
+- 親指が届く範囲（画面下から30%以内）
+- サイズ: 最低100×100px
+- 円形ボタン（連打しやすい）
 
 ### ボタンサイズ
 
 ```typescript
-const tontonButtonSpec = {
-  width: 120,           // px（横幅）
-  height: 120,          // px（高さ）
-  borderRadius: 12,     // 角丸（大きめ）
-  touchTarget: 100,     // 最小タッチサイズ（連打重視）
-  fontSize: 24,         // フォントサイズ（大きく明瞭）
+const tappingButtonSpec = {
+  width: 100,           // px（横幅）
+  height: 100,          // px（高さ）
+  borderRadius: '50%',  // 完全な円形
+  touchTarget: 100,     // 最小タッチサイズ
+  fontSize: 48,         // フォントサイズ（「トン！」）
+  fontWeight: 'bold',   // 太字
 };
 ```
 
 **タッチターゲット**:
 
-- 最小サイズ: 100×100px（連打しやすさ重視）
-- 実際のボタンサイズ: 120×120px
-- 理由: 連打時のタップ精度向上、疲労軽減
+- 最小サイズ: 100×100px
+- 実際のボタンサイズ: 100×100px以上
+- 理由: 連打精度向上、指が届きやすい
 
 ### レトロボタンスタイリング
 
-相撲テーマのレトロな大型ボタンデザインを採用します。
+相撲テーマのレトロなボタンデザインを採用します。
 
 **CSS実装例**:
 
 ```css
-.tonton-button {
+.tapping-button {
   /* 基本スタイル */
   font-family: 'M PLUS 1', sans-serif;
-  border: 6px solid var(--retro-dark);  /* #1a0f08 */
-  background: var(--retro-fg);  /* #f4e4c1 - まわしクリーム */
+  border: 4px solid var(--retro-dark);  /* #1a0f08 */
+  background: var(--tap-button);  /* #ffd700 */
   color: var(--retro-bg);  /* #3d2817 */
-  font-size: 24px;
+  font-size: 48px;
   font-weight: bold;
-  width: 120px;
-  height: 120px;
+  width: 100px;
+  height: 100px;
   cursor: pointer;
+  position: relative;
 
-  /* 円形ボタン */
-  border-radius: 12px;
+  /* 円形 */
+  border-radius: 50%;
 
-  /* 中央配置 */
-  position: fixed;
-  bottom: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-
-  /* ユーザー選択無効化（連続タップ時のテキスト選択防止） */
+  /* ユーザー選択無効化 */
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
@@ -180,46 +191,18 @@ const tontonButtonSpec = {
 }
 
 /* タップ時の視覚フィードバック */
-.tonton-button:active {
-  transform: translateX(-50%) scale(0.9);
-  filter: brightness(1.2);
+.tapping-button:active {
+  transform: scale(0.9);
+  filter: brightness(0.8);
 }
 
-/* リップルエフェクト（タップ位置） */
-.tonton-button::after {
-  content: '';
-  position: absolute;
-  width: 100%;
-  height: 100%;
-  top: 0;
-  left: 0;
-  border-radius: 12px;
-  background: radial-gradient(circle, rgba(255, 215, 0, 0.6) 0%, transparent 70%);
-  opacity: 0;
-  pointer-events: none;
-}
-
-.tonton-button.tap-effect::after {
-  animation: ripple 0.3s ease-out;
-}
-
-@keyframes ripple {
-  0% {
-    opacity: 1;
-    transform: scale(0);
-  }
-  100% {
-    opacity: 0;
-    transform: scale(1.5);
-  }
-}
-
-/* 無効状態（ゲーム停止中） */
-.tonton-button:disabled {
-  background: var(--retro-dark);
-  color: var(--retro-bg);
-  opacity: 0.5;
-  cursor: not-allowed;
+/* タップレート表示 */
+.tap-rate-display {
+  font-family: 'M PLUS 1', sans-serif;
+  font-size: 18px;
+  color: var(--retro-fg);
+  text-align: center;
+  margin-top: 8px;
 }
 ```
 
@@ -227,54 +210,74 @@ const tontonButtonSpec = {
 
 ```css
 :root {
-  --retro-bg: #3d2817;      /* 土俵の土色（dohyo earth brown） */
-  --retro-fg: #f4e4c1;      /* まわしのクリーム色（mawashi cream） */
-  --retro-accent: #8b4513;  /* 茶色まわし（brown mawashi） */
-  --retro-dark: #1a0f08;    /* 深い土色（deep earth） */
-  --action-highlight: #ffd700;  /* アクションハイライト（ゴールド） */
+  --retro-bg: #3d2817;      /* 土俵の土色 */
+  --retro-fg: #f4e4c1;      /* まわしのクリーム色 */
+  --retro-accent: #8b4513;  /* 茶色まわし */
+  --retro-dark: #1a0f08;    /* 深い土色 */
+
+  --tipping-safe: #00ff00;     /* 転倒度低（緑） */
+  --tipping-warning: #ffff00;  /* 転倒度中（黄） */
+  --tipping-danger: #ff0000;   /* 転倒度高（赤） */
+
+  --tap-button: #ffd700;       /* トン！ボタン（ゴールド） */
 }
 ```
 
-## 連打戦略
+---
 
-### 連打速度とリズム
+## タップ戦略
 
-トントン相撲では、クールダウンやゲージの概念は存在しません。代わりに、連打速度とリズムが戦略の鍵となります。
+### 連打テクニック
 
-**連打パターン**:
+タップレートを高めることで、より強い力で相手を押せます。
 
-```typescript
-// 連打速度による効果の違い
-const TAP_STRATEGIES = {
-  FAST:   { interval: 100, effect: '安定前進、揺れ少' },
-  MEDIUM: { interval: 250, effect: 'バランス型' },
-  SLOW:   { interval: 500, effect: '大きな跳ね、転倒リスク' },
-};
+**効果的な連打**:
+
+1. **リズミカルな連打**:
+   - 一定のリズムで連打（3-5 taps/s）
+   - 不規則なタップより効果的
+   - 疲れにくい
+
+2. **爆発的な連打**:
+   - 短時間で集中的に連打（8-10 taps/s）
+   - 土俵際で使用
+   - 一気に押し出す
+
+3. **調整タップ**:
+   - 必要に応じて強弱をつける
+   - 相手の位置を見て判断
+   - 無駄な力を使わない
+
+### 戦略的タップ
+
+**状況別の使い分け**:
+
+1. **序盤（両者中央）**:
+   - リズミカルな連打でジワジワ押す
+   - 相手を土俵際に追い込む
+   - 傾きを蓄積させる
+
+2. **中盤（相手が土俵際）**:
+   - 爆発的な連打で押し出し狙い
+   - または傾きを限界まで増やす
+   - 一気に決着をつける
+
+3. **終盤（自分が土俵際）**:
+   - 必死の連打で押し返す
+   - タップレート最大化
+   - 逆転を狙う
+
+**コンボ例**:
+
+```
+リズミカルな連打（3秒） → 爆発的な連打（1秒）
+→ 相手を土俵際に追い込み、一気に押し出す
+
+調整タップ → リズミカルな連打 → 爆発的な連打
+→ 位置を調整しつつ、徐々に圧力を強める
 ```
 
-**戦略的使用**:
-
-1. **速い連打（100ms間隔）**:
-   - 安定した前進
-   - 揺れが少なく転倒しにくい
-   - 相手を押し込む時に有効
-
-2. **リズミカルな連打（250ms間隔）**:
-   - バランスの取れた動き
-   - 適度な跳ねと前進
-   - 距離を詰める時に有効
-
-3. **遅い連打（500ms間隔）**:
-   - 大きな跳ね上がり
-   - タイミング調整
-   - 転倒リスクが増えるが強力
-
-### コンボ例
-
-```
-速い連打（3回） → 一時停止（力士が落ち着く） → 速い連打（3回）
-→ 安定して前進、相手を土俵際まで追い込む
-```
+---
 
 ## 視覚フィードバック
 
@@ -282,391 +285,536 @@ const TAP_STRATEGIES = {
 
 **即座の応答**:
 
-1. **視覚**: ボタンのスケール変化（scale(0.9)、即座）+ リップルエフェクト
-2. **物理**: 力士が跳ね上がる（物理演算による自然な動き）
-3. **サウンド**: タップ音再生（オプション）
-4. **触覚**: 軽いバイブレーション（10ms、対応デバイス）
+1. **視覚**: ボタンのスケール変化（scale(0.9)、即座）
+2. **タップレート表示**: 「5 taps/s」のようにリアルタイム更新
+3. **力士の動き**: 物理エンジンによる自然な動き
+4. **転倒ゲージ**: 傾き度の視覚化（0-100%）
+5. **サウンド**: タップ音再生（オプション）
+6. **触覚**: バイブレーション（軽く、対応デバイス）
 
 **実装**:
 
 ```typescript
 function handleTap() {
-  // ゲーム停止中は実行しない
-  if (gameState !== 'playing') return;
+  if (gameState !== 'battle') return;
 
-  // 物理エンジンに力を加える
-  applyTapForce(playerFighter, {
-    forward: TAP_FORCE,    // 2.0 N
-    upward: TAP_BOUNCE,    // 0.5 N
-    rotation: random(-0.1, 0.1)
-  });
+  // タップを記録
+  tapTracker.addTap();
 
-  // リップルエフェクト
-  button.classList.add('tap-effect');
-  setTimeout(() => button.classList.remove('tap-effect'), 300);
+  // タップ力を適用
+  const tapRate = tapTracker.getTapRate();
+  applyTapForce(player, tapRate);
+
+  // タップレート表示更新
+  setDisplayedTapRate(tapRate);
 
   // サウンドフィードバック（オプション）
   if (soundEnabled) {
-    playSound('tap');
+    playTapSound();
   }
 
   // 触覚フィードバック
   if (navigator.vibrate) {
-    navigator.vibrate(10);  // 軽い振動
+    navigator.vibrate(10); // 軽いバイブレーション
   }
 }
 ```
 
-### 物理演算フィードバック
+### 転倒ゲージ表示
 
-**力士の動きによるフィードバック**:
+**転倒度ビジュアル**:
 
 ```typescript
-// タップ後、力士の動きで連打効果を視覚的に確認
-// - 力士が跳ね上がる（velocity.y > 0）
-// - 前方へ移動する（velocity.z > 0）
-// - 微小に揺れる（rotation.x が変化）
+// 転倒度を0-100%で表示
+const tippingPercentage = tipping * 100; // 0.0-1.0 → 0-100
 
-// これらはすべて物理演算により自動的に表現される
+// ゲージの色を変化
+const gaugeColor =
+  tippingPercentage < 50 ? 'var(--tipping-safe)' :    // 緑
+  tippingPercentage < 80 ? 'var(--tipping-warning)' : // 黄
+  'var(--tipping-danger)';                            // 赤
+
+<div className="tipping-gauge">
+  <div
+    className="tipping-gauge-fill"
+    style={{
+      width: `${tippingPercentage}%`,
+      backgroundColor: gaugeColor
+    }}
+  />
+  <div className="tipping-gauge-label">
+    転倒度: {tippingPercentage.toFixed(0)}%
+  </div>
+</div>
 ```
 
-## アクセシビリティ
+**ゲージ仕様**:
 
-### タッチターゲットサイズ
-
-**連打しやすさ重視**:
-
-- 最小サイズ: 100×100px（Apple HIG 44×44pxを大きく超える）
-- 実装: 120×120px（余裕を持たせる）
-- 理由: 連打時のタップ精度向上、疲労軽減
-
-**ボタン配置**:
-
-- 画面下部中央（左右の手でもアクセス可能）
-- 周囲に十分な余白（誤タップ防止）
-
-### 視覚フィードバック
-
-**明確なフィードバック**:
-
-- タップ時の即座なスケール変化
-- リップルエフェクトでタップ位置を視覚化
-- 力士の物理的な動き（連打効果の確認）
-
-**コントラスト**:
-
-- ボタン背景と画面背景: 4.5:1以上
-- ラベルとボタン背景: 4.5:1以上
-
-### 触覚フィードバック
-
-**バイブレーション対応**:
-
-```typescript
-const vibrationPatterns = {
-  tap: 10,                       // タップ（軽い振動）
-  collision: 20,                 // 力士衝突（中程度）
-  fall: 50,                      // 転倒（強い振動）
-  ringOut: [30, 10, 30],         // 場外（パターン）
-  victory: [50, 20, 50, 20, 100] // 勝利（複雑なパターン）
-};
-```
-
-### レスポンシブ対応
-
-**画面サイズ別調整**:
-
-```typescript
-// 小画面（iPhone SE）
-if (screenWidth < 375) {
-  buttonHeight = 50;   // 少し小さく
-  fontSize = 14;
+```css
+.tipping-gauge {
+  width: 200px;
+  height: 24px;
+  border: 2px solid var(--retro-dark);
+  background: rgba(0, 0, 0, 0.3);
+  position: relative;
+  font-family: 'M PLUS 1', sans-serif;
 }
 
-// 大画面（iPad）
-if (screenWidth > 768) {
-  buttonHeight = 80;   // 大きく
-  fontSize = 20;
+.tipping-gauge-fill {
+  height: 100%;
+  transition: width 0.1s linear, background-color 0.2s ease;
+}
+
+.tipping-gauge-label {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: var(--retro-fg);
+  font-size: 14px;
+  font-weight: bold;
+  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
 }
 ```
 
-## UIコンポーネント構造
+---
 
-### TontonButton Component
+## HUDコンポーネント
 
-```typescript
-interface TontonButtonProps {
-  disabled: boolean;       // ゲーム停止中など
-  onTap: () => void;       // タップ時のコールバック
-}
+### 転倒ゲージ（両者）
 
-function TontonButton({
-  disabled,
-  onTap
-}: TontonButtonProps) {
-  const [tapEffect, setTapEffect] = useState(false);
+画面上部に配置し、両者の転倒度を常時表示します。
 
-  const handleTap = () => {
-    if (disabled) return;
+**レイアウト**:
 
-    // タップ処理
-    onTap();
-
-    // リップルエフェクト
-    setTapEffect(true);
-    setTimeout(() => setTapEffect(false), 300);
-  };
-
-  return (
-    <button
-      className={`
-        tonton-button
-        ${tapEffect ? 'tap-effect' : ''}
-      `}
-      disabled={disabled}
-      onClick={handleTap}
-    >
-      トン！
-    </button>
-  );
-}
+```
+┌────────────────────────────────────────┐
+│  プレイヤー転倒度: ▓▓▓░░░░░░░ 30%    │
+│  AI転倒度:         ▓▓▓▓▓▓▓▓░░ 80%    │
+└────────────────────────────────────────┘
 ```
 
-### HUD Component
+**実装**:
 
 ```typescript
-function HUD({
-  matchStatus,
-  playerName,
-  opponentName
-}: HUDProps) {
+interface HUDProps {
+  playerTipping: number;  // 0.0-1.0
+  opponentTipping: number;  // 0.0-1.0
+}
+
+function HUD({ playerTipping, opponentTipping }: HUDProps) {
   return (
     <div className="hud">
-      <div className="hud-top">
-        {/* 試合ステータス */}
-        <div className="match-status">
-          {matchStatus}
-        </div>
-
-        {/* プレイヤー名表示（optional） */}
-        <div className="player-names">
-          <span className="player-name">{playerName}</span>
-          <span className="vs-text">vs</span>
-          <span className="opponent-name">{opponentName}</span>
-        </div>
-      </div>
+      <TippingGauge
+        label="プレイヤー転倒度"
+        tipping={playerTipping}
+      />
+      <TippingGauge
+        label="AI転倒度"
+        tipping={opponentTipping}
+      />
     </div>
   );
 }
 ```
 
-## パフォーマンス最適化
+### タップレート表示
 
-### イベント最適化
-
-**パッシブリスナー**:
+ボタンの下に現在のタップレートを表示します。
 
 ```typescript
-element.addEventListener('touchstart', handler, {
-  passive: true  // スクロールパフォーマンス向上
-});
+interface TapRateDisplayProps {
+  tapRate: number;  // taps per second
+}
+
+function TapRateDisplay({ tapRate }: TapRateDisplayProps) {
+  return (
+    <div className="tap-rate-display">
+      {tapRate.toFixed(1)} taps/s
+    </div>
+  );
+}
+```
+
+---
+
+## アクセシビリティ
+
+### タッチターゲット
+
+- **最小サイズ**: 100×100px（連打しやすい大きさ）
+- **配置**: 画面中央下部（親指が届きやすい）
+- **余白**: 周囲に十分な余白（誤タップ防止）
+
+### 視覚的フィードバック
+
+- **タップ時**: スケール変化（0.9倍）、即座
+- **転倒ゲージ**: 色変化（緑 → 黄 → 赤）、明確
+- **タップレート表示**: リアルタイム更新、数値表示
+
+### 触覚フィードバック
+
+```typescript
+// バイブレーション対応
+if ('vibrate' in navigator) {
+  navigator.vibrate(10); // 10ms、軽いバイブレーション
+}
+```
+
+**対応デバイス**:
+- iOS Safari: Taptic Engine対応
+- Android Chrome: バイブレーション対応
+
+---
+
+## パフォーマンス最適化
+
+### タップイベント最適化
+
+```typescript
+// Passive event listener（スクロールパフォーマンス向上）
+button.addEventListener('touchstart', handleTap, { passive: true });
+
+// デバウンス不要（タップは全て記録）
+function handleTap() {
+  tapTracker.addTap(); // スライディングウィンドウで自動管理
+}
 ```
 
 ### レンダリング最適化
 
-**React.memo使用**:
-
 ```typescript
-export const TontonButton = React.memo(
-  TontonButtonComponent,
-  (prev, next) => {
-    return prev.disabled === next.disabled;
-  }
+// React.memo でタップレート表示のみ更新
+const TapRateDisplay = React.memo(({ tapRate }) => (
+  <div className="tap-rate-display">
+    {tapRate.toFixed(1)} taps/s
+  </div>
+));
+
+// 転倒ゲージはtippingが変化した時のみ更新
+const TippingGauge = React.memo(({ tipping }) => {
+  // ...
+}, (prevProps, nextProps) =>
+  prevProps.tipping === nextProps.tipping
 );
 ```
 
-**CSSアニメーション優先**:
+---
 
-- transform / opacity のみ使用（GPU加速）
-- width / height の変更を避ける（リフロー防止）
-- transition無効化（:active時の即座の反応）
+## 画面遷移
 
-## デバッグ機能
+### タイトル画面
 
-### 物理状態の可視化
+**レイアウト**:
 
-**開発モード限定**:
+```
+┌────────────────────────┐
+│    相撲バトル          │
+│                        │
+│   現在の番付: 関脇     │
+│   戦績: 15勝 7敗       │
+│   あと2勝で大関        │
+│                        │
+│   ┌──────────┐        │
+│   │ 試合開始 │        │
+│   └──────────┘        │
+└────────────────────────┘
+```
+
+**実装**:
 
 ```typescript
-if (import.meta.env.DEV) {
-  // 物理状態表示
-  const debugDisplay = document.createElement('div');
-  debugDisplay.className = 'physics-debug';
-  debugDisplay.innerHTML = `
-    <div>Velocity: ${velocity.toFixed(2)} m/s</div>
-    <div>Angular Velocity: ${angularVelocity.toFixed(2)} rad/s</div>
-    <div>Rotation: ${rotation.toFixed(2)}°</div>
-    <div>Position: (${position.x.toFixed(2)}, ${position.z.toFixed(2)})</div>
-  `;
+interface TitleScreenProps {
+  currentRank: SumoRank;  // 0-4
+  totalWins: number;
+  totalLosses: number;
+  consecutiveWins: number;
+  onStartBattle: () => void;
+}
+
+function TitleScreen(props: TitleScreenProps) {
+  const rankName = getRankName(props.currentRank);
+  const winsToPromotion = getWinsToPromotion(props.consecutiveWins);
+
+  return (
+    <div className="title-screen">
+      <h1 className="title">相撲バトル</h1>
+      <div className="rank-display">
+        <div className="rank-badge">{rankName}</div>
+        <div className="record">
+          戦績: {props.totalWins}勝 {props.totalLosses}敗
+        </div>
+        {winsToPromotion > 0 && (
+          <div className="promotion-info">
+            あと{winsToPromotion}勝で{getNextRankName(props.currentRank)}
+          </div>
+        )}
+      </div>
+      <button
+        className="start-button"
+        onClick={props.onStartBattle}
+      >
+        試合開始
+      </button>
+    </div>
+  );
 }
 ```
 
-## テスト戦略
+### リザルト画面
 
-### 単体テスト
+**レイアウト**:
 
-**物理シミュレーションのテスト**:
-
-```typescript
-describe('Tonton Physics', () => {
-  it('should apply force on tap', () => {
-    const initialVelocity = fighter.velocity.clone();
-    executeTap();
-    expect(fighter.velocity.z).toBeGreaterThan(initialVelocity.z);
-    expect(fighter.velocity.y).toBeGreaterThan(initialVelocity.y);
-  });
-
-  it('should apply damping over time', () => {
-    fighter.velocity.set(0, 0, 10);
-    updatePhysics(1.0);  // 1秒経過
-    expect(fighter.velocity.z).toBeLessThan(10);
-  });
-
-  it('should detect fall at 60 degrees', () => {
-    fighter.rotation.x = Math.PI / 3;  // 60度
-    fighter.angularVelocity = 0.6;
-    const hasFallen = checkFallCondition(fighter);
-    expect(hasFallen).toBe(true);
-  });
-});
+```
+┌────────────────────────┐
+│      勝利！            │
+│                        │
+│   転倒率: 85%          │
+│   相手転倒率: 100%     │
+│                        │
+│   昇進！新 大関        │
+│   (ゴールドエフェクト) │
+│                        │
+│   ┌──────────┐        │
+│   │ 連続挑戦 │        │
+│   └──────────┘        │
+│   ┌──────────┐        │
+│   │タイトルへ│        │
+│   └──────────┘        │
+└────────────────────────┘
 ```
 
-### 統合テスト
-
-**トントンボタンフローのテスト**:
+**実装**:
 
 ```typescript
-it('should execute tap on button click', async () => {
-  const { getByText } = render(<GameUI />);
+interface ResultScreenProps {
+  winner: 'player' | 'opponent';
+  playerTipping: number;  // 最終転倒度
+  opponentTipping: number;
+  rankChange: 'promoted' | 'demoted' | 'maintained';
+  newRank: SumoRank;
+  consecutiveWins: number;
+  onContinue: () => void;
+  onBackToTitle: () => void;
+}
 
-  const tontonButton = getByText('トン！');
-  const initialVelocity = getFighterVelocity();
+function ResultScreen(props: ResultScreenProps) {
+  const isVictory = props.winner === 'player';
+  const rankName = getRankName(props.newRank);
 
-  fireEvent.click(tontonButton);
+  return (
+    <div className="result-screen">
+      <h2 className={isVictory ? 'victory' : 'defeat'}>
+        {isVictory ? '勝利！' : '敗北...'}
+      </h2>
 
-  // タップで力が加わったか確認
-  expect(getFighterVelocity()).toBeGreaterThan(initialVelocity);
-});
+      <div className="stats">
+        <div>転倒率: {(props.playerTipping * 100).toFixed(0)}%</div>
+        <div>相手転倒率: {(props.opponentTipping * 100).toFixed(0)}%</div>
+      </div>
 
-it('should apply ripple effect on tap', async () => {
-  const { getByText } = render(<GameUI />);
+      {props.rankChange === 'promoted' && (
+        <div className="rank-change promoted">
+          昇進！新 {rankName}
+        </div>
+      )}
+      {props.rankChange === 'demoted' && (
+        <div className="rank-change demoted">
+          降格... {rankName}
+        </div>
+      )}
+      {props.rankChange === 'maintained' && (
+        <div className="rank-change maintained">
+          連勝: {props.consecutiveWins}/3
+        </div>
+      )}
 
-  const tontonButton = getByText('トン！');
-  fireEvent.click(tontonButton);
-
-  // リップルエフェクトが表示されるか確認
-  expect(tontonButton).toHaveClass('tonton-button--active');
-});
-```
-
-### E2Eテスト
-
-**実機テスト項目**:
-
-- [ ] トントンボタンがタップに反応する
-- [ ] 連打により力士が前進する
-- [ ] 物理演算が自然な動きを生成する
-- [ ] 視覚フィードバック（リップル）が即座に表示される
-- [ ] バイブレーションが動作する（対応端末）
-- [ ] 転倒判定が正確に動作する（60度閾値）
-- [ ] 土俵外判定が正確に動作する（4.5ユニット超）
-
-## トラブルシューティング
-
-### よくある問題
-
-**問題: ボタンがタップに反応しない**
-
-原因:
-- 試合が停止中（disabled=true）
-- イベントリスナーが登録されていない
-
-解決:
-```typescript
-// ボタンの状態を確認
-console.log('Disabled:', button.disabled);
-console.log('Match Status:', matchStatus);
-
-// イベントリスナーを確認
-button.addEventListener('click', () => {
-  console.log('Button clicked');
-});
-```
-
-**問題: 力士が動かない**
-
-原因:
-- 物理更新ループが動作していない
-- TAP_FORCEが小さすぎる
-
-解決:
-```typescript
-// 物理更新を確認
-useFrame((state, delta) => {
-  console.log('Physics update:', delta);
-  updatePhysics(delta);
-});
-
-// 物理定数を確認
-console.log('TAP_FORCE:', TAP_FORCE);
-console.log('Velocity:', fighter.velocity);
-```
-
-**問題: 転倒判定が動作しない**
-
-原因:
-- FALL_ANGLEが正しく設定されていない
-- 角速度が閾値未満
-
-解決:
-```typescript
-// 転倒条件を確認
-console.log('Rotation:', Math.abs(fighter.rotation.x), '/ FALL_ANGLE:', FALL_ANGLE);
-console.log('Angular Velocity:', Math.abs(fighter.angularVelocity), '/ MIN:', MIN_FALL_VELOCITY);
-
-// 条件を満たしているか確認
-if (Math.abs(fighter.rotation.x) > FALL_ANGLE && Math.abs(fighter.angularVelocity) > MIN_FALL_VELOCITY) {
-  console.log('Fall condition met!');
+      <button className="continue-button" onClick={props.onContinue}>
+        連続挑戦
+      </button>
+      <button className="title-button" onClick={props.onBackToTitle}>
+        タイトルへ
+      </button>
+    </div>
+  );
 }
 ```
 
-## まとめ
+---
 
-### 設計の要点
+## 番付システム表示
 
-1. **相撲テーマのレトロデザイン**: 土俵色カラーパレット、M PLUS 1フォント
-2. **極限までシンプルな操作**: ボタン1つのみ（「トン！」連打）
-3. **物理シミュレーション**: 連打で振動発生、重力・慣性・減衰で自然な動き
-4. **大型ボタン**: 100×100px以上（連打しやすさ重視）
-5. **明確なフィードバック**: 視覚（リップル）・物理（力士の動き）・聴覚・触覚
-6. **アクセシビリティ**: 100px以上のタッチターゲット、明確なラベル
-7. **パフォーマンス**: GPU加速アニメーション、軽量な物理演算（~100行）
+### 番付バッジ
 
-### 戦略性
+```css
+.rank-badge {
+  font-family: 'M PLUS 1', sans-serif;
+  font-size: 48px;
+  font-weight: bold;
+  color: var(--retro-fg);
+  background: var(--retro-accent);
+  border: 4px solid var(--retro-dark);
+  padding: 16px 32px;
+  border-radius: 8px;
+  text-align: center;
+}
+```
 
-**基本戦略**:
-- 速い連打で安定前進
-- リズミカルな連打でバランス型
-- 遅い連打で大きな跳ね（リスク高）
+### 昇進エフェクト
 
-**状況別戦略**:
-- 相手を押し込む: 速い連打で安定前進
-- 距離を詰める: リズミカルな連打
-- 相手が転倒しそう: 一気に押し込む連打
-- 自分が転倒しそう: 一時停止で力士を落ち着かせる
+```css
+.rank-change.promoted {
+  background: var(--action-special);  /* ゴールド */
+  color: var(--retro-bg);
+  font-size: 32px;
+  font-weight: bold;
+  padding: 16px;
+  border-radius: 8px;
+  animation: promotion-pulse 1s ease-in-out infinite;
+}
+
+@keyframes promotion-pulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.05);
+    filter: brightness(1.2);
+  }
+}
+```
+
+### 降格表示
+
+```css
+.rank-change.demoted {
+  background: rgba(255, 0, 0, 0.3);
+  color: var(--retro-fg);
+  font-size: 24px;
+  padding: 12px;
+  border-radius: 8px;
+}
+```
+
+---
+
+## レスポンシブデザイン
+
+### 画面サイズ対応
+
+```css
+/* スマホ縦持ち（〜600px） */
+@media (max-width: 600px) {
+  .tapping-button {
+    width: 100px;
+    height: 100px;
+    font-size: 48px;
+  }
+
+  .hud {
+    font-size: 14px;
+  }
+}
+
+/* タブレット（601-1024px） */
+@media (min-width: 601px) and (max-width: 1024px) {
+  .tapping-button {
+    width: 120px;
+    height: 120px;
+    font-size: 56px;
+  }
+
+  .hud {
+    font-size: 16px;
+  }
+}
+
+/* デスクトップ（1025px〜） */
+@media (min-width: 1025px) {
+  .tapping-button {
+    width: 140px;
+    height: 140px;
+    font-size: 64px;
+  }
+
+  .hud {
+    font-size: 18px;
+  }
+}
+```
+
+### タッチデバイス最適化
+
+```css
+/* タッチデバイス用の調整 */
+@media (hover: none) and (pointer: coarse) {
+  .tapping-button {
+    /* タッチ操作に最適化 */
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  /* ボタンのホバー効果を無効化 */
+  .tapping-button:hover {
+    transform: none;
+  }
+
+  /* タップ時のフィードバックを強化 */
+  .tapping-button:active {
+    transform: scale(0.9);
+    filter: brightness(0.8);
+  }
+}
+```
+
+---
+
+## テスト項目
+
+### 操作テスト
+
+- [ ] タップボタンが反応する
+- [ ] タップレートが正確に測定される（TapTracker）
+- [ ] 連打が物理エンジンに正しく反映される
+- [ ] タップレート表示がリアルタイム更新される
+- [ ] 転倒ゲージが正確に表示される
+- [ ] バイブレーションが動作する（対応デバイス）
+
+### 視覚フィードバックテスト
+
+- [ ] タップ時にボタンがスケール変化する
+- [ ] 転倒ゲージの色が適切に変化する（緑 → 黄 → 赤）
+- [ ] タップレート表示が見やすい
+- [ ] 画面遷移がスムーズ
+
+### アクセシビリティテスト
+
+- [ ] タッチターゲットが十分な大きさ（100×100px以上）
+- [ ] ボタンが親指で届く位置に配置されている
+- [ ] 視覚的フィードバックが明確
+- [ ] 誤タップが起きにくい配置
+
+### パフォーマンステスト
+
+- [ ] 連打中もFPSが30fps以上維持される
+- [ ] タップイベントの遅延がない（<50ms）
+- [ ] レンダリングが滑らか
+
+---
 
 ## 参考資料
 
-- [Apple Human Interface Guidelines - Touch](https://developer.apple.com/design/human-interface-guidelines/ios/user-interaction/gestures/)
-- [Material Design - Touch targets](https://material.io/design/usability/accessibility.html#layout-and-typography)
-- [WCAG 2.1 - Target Size](https://www.w3.org/WAI/WCAG21/Understanding/target-size.html)
+**フォント**:
+- [M PLUS 1 Font](https://fonts.google.com/specimen/M+PLUS+1) - 日本語対応レトロ風フォント
+
+**レトロデザイン**:
+- 8bit Color Palette - レトロゲーム風カラー
+- 相撲テーマカラー（土俵の土色、まわし色）
+
+**タッチ操作**:
+- iOS Human Interface Guidelines - Touch Targets
+- Android Material Design - Touch Targets (最低48×48dp)
+
+**物理エンジン**:
+- カスタム実装（~100行）- 重力、減衰、衝突、転倒判定

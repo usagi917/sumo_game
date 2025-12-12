@@ -1,6 +1,6 @@
 # アーキテクチャ設計
 
-レトロ風紙相撲バトルゲームのシステム設計とモジュール構造を説明します。
+レトロ風相撲バトルゲームのシステム設計とモジュール構造を説明します。
 
 ## 設計原則
 
@@ -27,27 +27,29 @@
 │      User Interface (UI)                 │
 │  ┌──────────┐  ┌───────────┐  ┌───────┐ │
 │  │  HUD     │  │ Controls  │  │Screens│ │
-│  │          │  │ (連打ボタン)│  │(レトロ)│ │
+│  │(転倒率)  │  │ (トン！)  │  │(レトロ)│ │
+│  │ +Rank    │  │           │  │ +Rank │ │
 │  └──────────┘  └───────────┘  └───────┘ │
 └──────────────────┬───────────────────────┘
                    │
 ┌──────────────────▼───────────────────────┐
 │      State Management (Zustand)          │
-│  - Player/AI actors                      │
-│  - Physics state (position, velocity)    │
-│  - Tap tracking                          │
+│  - Player/AI physics state               │
+│  - TapTracker (タップレート測定)         │
+│  - Game status                           │
+│  - Ranking state (番付)                  │
 └──────────────────┬───────────────────────┘
                    │
 ┌──────────────────▼───────────────────────┐
 │         Game Systems                     │
-│  ┌──────────┐  ┌──────────┐  ┌────────┐ │
-│  │ Physics  │  │  Tapping │  │  AI    │ │
-│  │  Engine  │  │  Tracker │  │        │ │
-│  └──────────┘  └──────────┘  └────────┘ │
-│  ┌──────────┐  ┌──────────────────────┐ │
-│  │ Tipping  │  │ Collision/Ring-out   │ │
-│  │  System  │  │ (距離ベース判定)      │ │
-│  └──────────┘  └──────────────────────┘ │
+│  ┌──────────────┐  ┌────────────────┐   │
+│  │   Physics    │  │   TapTracker   │   │
+│  │   Engine     │  │   (1s window)  │   │
+│  └──────────────┘  └────────────────┘   │
+│  ┌──────────────┐  ┌────────────────┐   │
+│  │      AI      │  │  Ring-out判定  │   │
+│  │   (連打)     │  │   (距離ベース) │   │
+│  └──────────────┘  └────────────────┘   │
 └──────────────────┬───────────────────────┘
                    │
 ┌──────────────────▼───────────────────────┐
@@ -60,8 +62,8 @@
                    │
 ┌──────────────────▼───────────────────────┐
 │         Styles (レトロデザイン)            │
-│  - 8bitカラーパレット (retro.css)         │
-│  - ドット絵フォント (PixelMplus)          │
+│  - 8bitカラーパレット (index.css)         │
+│  - M PLUS 1フォント                       │
 └──────────────────────────────────────────┘
 ```
 
@@ -73,25 +75,27 @@
 
 **エクスポート**:
 - `PhysicsState` - 物理状態の型
-- `TapButton` - タップボタンの型（強プッシュ/弱プッシュ）
 - `GameState` - ゲーム状態の型
+- `GameStatus` - ゲーム状態種別（'title' | 'battle' | 'result'）
+- `Winner` - 勝者（'player' | 'opponent' | null）
 
 **依存**: なし
 
 **主要インターフェース**:
 
-- `PhysicsState`: 力士の物理状態（position, velocity, rotation, tipping等）
-- 完全な定義: [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md#型定義) を参照
-
-**主要型**:
-type ActionType = 'ton' | 'tonton';
-
-// アクター
-interface Actor {
-  id: string;
-  physicsState: PhysicsState;
-  isPlayer: boolean;
+```typescript
+// 物理状態（力士の状態）
+interface PhysicsState {
+  position: Vector3;        // 位置
+  velocity: Vector3;        // 速度
+  angularVelocity: number;  // 角速度
+  rotation: Euler;          // 回転角度
+  tipping: number;          // 傾き度（0-1）
+  isFallen: boolean;        // 転倒フラグ
 }
+
+type GameStatus = 'title' | 'battle' | 'result';
+type Winner = 'player' | 'opponent' | null;
 ```
 
 ### State Module (`src/state/`)
@@ -100,175 +104,300 @@ interface Actor {
 
 **エクスポート**:
 - `useGameStore` - Zustandストアのフック
-- State更新アクション
+- `useRankingStore` - 番付ストアのフック
+- State更新アクション（`executeTap`, `updatePhysics`, `checkVictory`等）
+
+**依存**: `types/`, `systems/TapTracker`, `physics/tontonzumo-physics`
+
+**主要インターフェース**:
+- `GameState` - ゲーム全体の状態管理
+- `RankingState` - 番付システムの状態管理
+
+**主要フィールド**:
+- `player`, `opponent`: 物理状態（`PhysicsState`）
+- `gameStatus`: 画面状態（`GameStatus`）
+- `winner`: 勝者（`Winner`）
+- `tapTracker`: タップレート測定（`TapTracker`インスタンス）
+
+```typescript
+interface GameState {
+  player: PhysicsState;
+  opponent: PhysicsState;
+  gameStatus: GameStatus;
+  winner: Winner;
+  tapTracker: TapTracker;
+
+  // Actions
+  executeTap: () => void;
+  updatePhysics: (deltaTime: number) => void;
+  checkVictory: () => void;
+  startBattle: () => void;
+  resetGame: () => void;
+}
+```
+
+#### Ranking Store Module (`src/state/rankingStore.ts`)
+
+**責務**: 番付（ランキング）システムの状態管理と永続化
+
+**エクスポート**:
+- `useRankingStore` - 番付ストアのフック
+- `recordWin` - 勝利記録アクション
+- `recordLoss` - 敗北記録アクション
 
 **依存**: `types/`
 
-**主要インターフェース**: `GameState` - ゲーム全体の状態管理
+**主要インターフェース**:
 
-**主要フィールド**:
-- `player`, `opponent`: 物理状態（PhysicsState）
-- `gameStatus`: 画面状態（'title' | 'battle' | 'result'）
-- `winner`: 勝者（'player' | 'opponent' | null）
-- `tapTracker`: タップ追跡（TapTracker）
-
-**完全な定義**: [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md#ゲーム状態管理) を参照
-
-### Game Systems Module (`src/game/systems/`)
-
-**責務**: ゲームロジックとシステム
-
-#### Physics Engine (`physics.ts`)
-
-**責務**: 物理シミュレーション（重力、慣性、摩擦）
-
-**インターフェース**:
 ```typescript
-interface PhysicsEngine {
-  update(actor: PhysicsState, deltaTime: number): void;
-  applyForce(actor: PhysicsState, force: THREE.Vector3): void;
-  applyTapForce(actor: PhysicsState, button: TapButton, tapRate: number): void;
+type SumoRank = 0 | 1 | 2 | 3 | 4;
+// 0: 前頭 (Maegashira) - 最低ランク
+// 1: 小結 (Komusubi)
+// 2: 関脇 (Sekiwake)
+// 3: 大関 (Ozeki)
+// 4: 横綱 (Yokozuna) - 最高位
+
+interface RankingState {
+  currentRank: SumoRank;         // 現在の階級（0-4）
+  consecutiveWins: number;        // 連勝数（0-3）
+  totalWins: number;              // 通算勝利数
+  totalLosses: number;            // 通算敗北数
+
+  // アクション
+  recordWin: () => void;          // 勝利を記録し、昇進判定
+  recordLoss: () => void;         // 敗北を記録し、降格判定
+  getRankName: () => string;      // 現在の階級名を取得
+  getWinsToPromotion: () => number; // 次の昇進まで必要な勝数
 }
-```
 
-**物理パラメータ**:
-```typescript
-const PhysicsConfig = {
-  gravity: new THREE.Vector3(0, -9.8, 0),
-  friction: 0.7,
-  airResistance: 0.95,
-  actorMass: 1.0,
-  tippingThreshold: Math.PI / 4,  // 45度
-  stabilizationRate: 0.98,
-  ringRadius: 4.5
-};
+const RANK_NAMES = ['前頭', '小結', '関脇', '大関', '横綱'] as const;
+const WINS_REQUIRED_FOR_PROMOTION = 3;
 ```
 
 **実装詳細**:
-- 力の合成: `F = ma`
-- 速度更新: `v = v + a*dt`
-- 位置更新: `p = p + v*dt`
-- 摩擦・空気抵抗による減衰
-- カスタム実装（外部物理ライブラリ不使用）
 
-#### Tap Tracking System (`tap-tracker.ts`)
-
-**責務**: タップ速度の計測
-
-**インターフェース**:
+**昇進ロジック** (`recordWin()`):
 ```typescript
-class TapTracker {
-  addTap(timestamp?: number): void;
-  getTapRate(): number;  // タップ/秒
-  clear(): void;
-}
-```
+recordWin: () => {
+  const state = get();
+  const newWins = state.consecutiveWins + 1;
 
-**実装詳細**:
-- 1秒間のスライディングウィンドウ
-- タイムスタンプ配列で管理
-- 古いタップを自動削除
-
-#### Tap Force Converter (`tap-force.ts`)
-
-**責務**: タップ速度を力に変換
-
-**インターフェース**:
-```typescript
-interface TapForceConverter {
-  getForce(button: TapButton, tapRate: number): {
-    force: number;
-    tippingIncrease: number;
-  };
-}
-```
-
-**変換式**:
-```typescript
-// 強プッシュ
-strongForce = 0.5 + (tapRate * 1.5);
-strongTipping = tapRate * 0.01;
-
-// 弱プッシュ
-weakForce = 0.3 + (tapRate * 0.8);
-weakTipping = tapRate * 0.003;
-```
-
-#### Tipping System (`tipping.ts`)
-
-**責務**: 転倒判定
-
-**インターフェース**:
-```typescript
-interface TippingSystem {
-  update(actor: PhysicsState, deltaTime: number): void;
-  checkFallen(actor: PhysicsState): boolean;
-  getTippingDirection(actor: PhysicsState): 'forward' | 'backward' | null;
-}
-```
-
-**判定条件**:
-- 前傾: `rotation.x > 45°` → 前に倒れる
-- 後傾: `rotation.x < -45°` → 後ろに倒れる
-- 重心逸脱: 支持基底面外
-
-#### Collision System (`collision.ts`)
-
-**責務**: 衝突検出と土俵外判定
-
-**インターフェース**:
-```typescript
-interface CollisionSystem {
-  checkCollision(actor1: PhysicsState, actor2: PhysicsState): boolean;
-  checkRingOut(actor: PhysicsState, ringRadius: number): boolean;
-  resolveCollision(actor1: PhysicsState, actor2: PhysicsState): void;
-}
-```
-
-**実装詳細**:
-- 距離ベース衝突判定: `distance < threshold`
-- 土俵外判定: `position.length() > ringRadius`
-- 反発係数適用
-
-#### AI System (`ai.ts`)
-
-**責務**: AI対戦相手の行動制御
-
-**主要クラス**: `AIEngine`
-
-**AI特性**:
-- ルールベース判断（距離、傾き状態に応じた行動選択）
-- タップ速度の動的調整（4～15 taps/sec）
-- ランダム性による人間らしさ
-
-**実装詳細**: [TECHNICAL_DESIGN.md](./TECHNICAL_DESIGN.md#aiエンジン) を参照
-
-#### Game Loop (`game-loop.ts`)
-
-**責務**: 固定タイムステップゲームループ
-
-**実装**:
-```typescript
-class GameLoop {
-  private fixedDeltaTime = 1/60;  // 60fps物理更新
-  private accumulator = 0;
-
-  update(deltaTime: number): void {
-    this.accumulator += deltaTime;
-
-    // 固定タイムステップで物理更新
-    while (this.accumulator >= this.fixedDeltaTime) {
-      this.physicsEngine.update(this.fixedDeltaTime);
-      this.accumulator -= this.fixedDeltaTime;
-    }
-
-    // 可変タイムステップでレンダリング
-    this.render();
+  // 3連勝で昇進（横綱以外）
+  if (newWins >= 3 && state.currentRank < 4) {
+    set({
+      currentRank: state.currentRank + 1,
+      consecutiveWins: 0,  // リセット
+      totalWins: state.totalWins + 1
+    });
+    // localStorage保存
+    saveToLocalStorage();
+  } else {
+    set({
+      consecutiveWins: newWins,
+      totalWins: state.totalWins + 1
+    });
+    saveToLocalStorage();
   }
 }
 ```
 
-### Game Actors Module (`src/game/actors/`)
+**降格ロジック** (`recordLoss()`):
+```typescript
+recordLoss: () => {
+  const state = get();
+
+  // 1敗で降格（前頭と横綱以外）
+  if (state.currentRank > 0 && state.currentRank < 4) {
+    set({
+      currentRank: state.currentRank - 1,
+      consecutiveWins: 0,  // リセット
+      totalLosses: state.totalLosses + 1
+    });
+    saveToLocalStorage();
+  } else {
+    // 前頭または横綱: 降格なし
+    set({
+      consecutiveWins: 0,  // リセット
+      totalLosses: state.totalLosses + 1
+    });
+    saveToLocalStorage();
+  }
+}
+```
+
+**永続化**:
+```typescript
+const STORAGE_KEY = 'sumoRanking';
+
+// 保存
+const saveToLocalStorage = () => {
+  const state = get();
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({
+    currentRank: state.currentRank,
+    consecutiveWins: state.consecutiveWins,
+    totalWins: state.totalWins,
+    totalLosses: state.totalLosses
+  }));
+};
+
+// 読み込み
+const loadFromLocalStorage = (): Partial<RankingState> => {
+  const stored = localStorage.getItem(STORAGE_KEY);
+  if (stored) {
+    return JSON.parse(stored);
+  }
+  // デフォルト値（前頭でスタート）
+  return {
+    currentRank: 0,
+    consecutiveWins: 0,
+    totalWins: 0,
+    totalLosses: 0
+  };
+};
+```
+
+**ゲームストアとの統合**:
+
+リザルト画面で勝敗が決定したタイミングで呼び出し:
+```typescript
+// ResultScreen.tsx
+const { winner } = useGameStore();
+const { recordWin, recordLoss } = useRankingStore();
+
+useEffect(() => {
+  if (winner === 'player') {
+    recordWin();
+  } else if (winner === 'opponent') {
+    recordLoss();
+  }
+}, [winner]);
+```
+
+### Physics Module (`src/physics/`)
+
+**責務**: 物理シミュレーション
+
+#### Physics Engine (`tontonzumo-physics.ts`)
+
+**責務**: カスタム物理エンジン（約100行）
+
+**エクスポート関数**:
+```typescript
+// 物理更新
+function updatePhysics(actor: PhysicsState, deltaTime: number): PhysicsState
+
+// タップ力の適用
+function applyTapForce(actor: PhysicsState, tapRate: number): PhysicsState
+
+// 土俵外判定
+function isRingOut(position: Vector3): boolean
+```
+
+**物理定数**:
+```typescript
+const PHYSICS_CONSTANTS = {
+  GRAVITY: 9.8,              // 重力加速度
+  DAMPING: 0.95,             // 速度減衰率
+  ANGULAR_DAMPING: 0.90,     // 角速度減衰率
+  TAP_FORCE: 0.3,            // タップ1回あたりの押す力
+  TAP_BOUNCE: 0.2,           // タップ1回あたりの跳ね返り
+  FALL_ANGLE: 0.6,           // 転倒判定角度（ラジアン）
+  RING_RADIUS: 4.5           // 土俵半径
+};
+```
+
+**実装詳細**:
+1. 重力適用（`velocity.y -= GRAVITY * deltaTime`）
+2. 速度減衰（`velocity *= DAMPING`）
+3. 位置更新（`position += velocity * deltaTime`）
+4. 回転更新（`rotation.x += angularVelocity * deltaTime`）
+5. 地面衝突処理（`if (position.y < 0)` → 反発）
+6. 傾き度計算（`tipping = |rotation.x| / FALL_ANGLE`）
+7. 転倒判定（`isFallen = tipping >= 1.0`）
+
+### Systems Module (`src/systems/`)
+
+**責務**: ゲームシステム
+
+#### TapTracker (`tap-tracker.ts`)
+
+**責務**: タップレート測定（1秒間のスライディングウィンドウ）
+
+**インターフェース**:
+```typescript
+class TapTracker {
+  private tapTimestamps: number[] = [];
+  private readonly windowDuration = 1000; // 1秒
+
+  addTap(timestamp?: number): void;
+  getTapRate(): number;
+  reset(): void;
+  private cleanup(now: number): void;
+}
+```
+
+**実装詳細**:
+- `addTap()`: 現在時刻をタイムスタンプ配列に追加
+- `getTapRate()`: 1秒以内のタップ数を返す
+- `cleanup()`: 1秒より古いタイムスタンプを削除
+- スライディングウィンドウで正確なタップレート測定
+
+#### AI System
+
+**責務**: AI対戦相手の行動制御（gameStore.tsに統合）
+
+**AI特性**:
+- シンプルな連打アルゴリズム
+- ランダム性による自然な挙動
+- 距離ベース判断（オプション）
+
+**アクション選択ロジック**:
+```typescript
+// gameStore.tsのupdatePhysics内で実装
+if (gameStatus === 'battle') {
+  // AI is simple: just tap randomly
+  if (Math.random() < 0.6) { // 60% chance to tap each frame
+    const aiTapRate = 3 + Math.random() * 2; // 3-5 taps/sec
+    newState.opponent = applyTapForce(newState.opponent, aiTapRate);
+  }
+}
+```
+
+**実装の単純化**:
+- 専用AIエンジンなし
+- gameStore内で直接実装
+- 物理エンジンがAIの動きも制御
+
+#### Game Loop (Three.js `useFrame`)
+
+**責務**: フレームごとの更新
+
+**実装**:
+```typescript
+useFrame((state, delta) => {
+  const { updatePhysics, checkVictory, gameStatus } = useGameStore.getState();
+
+  if (gameStatus === 'battle') {
+    // 物理更新（プレイヤー + AI）
+    updatePhysics(delta);
+
+    // 勝敗判定
+    checkVictory();
+  }
+});
+```
+
+**実装の単純性**:
+- Three.jsの`useFrame`が自動的にrequestAnimationFrameで実行
+- 複雑な固定タイムステップは不要
+- deltaTimeをそのまま物理エンジンに渡す
+- 勝敗判定は毎フレーム実行（軽量な距離計算のみ）
+
+---
+
+## 3Dコンポーネント (`src/components/game/`)
+
+### Game Actors Module
 
 **責務**: 3Dアクターの表示
 
@@ -278,20 +407,20 @@ class GameLoop {
 
 ```typescript
 interface SumoProps {
-  actor: Actor;
+  physicsState: PhysicsState;
   isPlayer: boolean;
 }
 
-function Sumo({ actor, isPlayer }: SumoProps): JSX.Element
+function Sumo({ physicsState, isPlayer }: SumoProps): JSX.Element
 ```
 
 **実装**:
 - Capsuleジオメトリ（カプセル型）
-- 物理状態に連動した回転・位置
-- 傾きに応じた色変更:
-  - 安定: デフォルト色
-  - 傾き中: 黄色系警告
-  - 転倒危険: 赤色警告
+- 位置・回転の同期（physicsState.position, physicsState.rotation）
+- 転倒度に応じた色変更:
+  - tipping < 0.5: デフォルト色（青/赤）
+  - tipping 0.5-0.8: 黄色系警告
+  - tipping > 0.8: 赤色系危険
 
 **レトロスタイル**:
 - フラットシェーディング（ポリゴン感）
@@ -307,59 +436,70 @@ function Ring(): JSX.Element
 
 **実装**:
 - Cylinderジオメトリ（低い円柱）
-- 外周ライン（別メッシュで強調）
-- シンプルなマテリアル（茶色系）
+- Torusジオメトリ（土俵の縁）
+- シンプルなマテリアル（茶色系 + ゴールド縁）
 
-### UI Module (`src/ui/`)
+**サイズ**:
+- 半径: 4.5ユニット
+- 高さ: 0.2ユニット
 
-**責務**: レトロ風ユーザーインターフェース
+---
 
-#### HUD Components (`src/ui/hud/`)
+## UIコンポーネント (`src/components/ui/`)
+
+### HUD Components
 
 **責務**: ゲーム情報の表示
 
 **コンポーネント**:
-- `TippingIndicator.tsx` - 傾きインジケーター（0-100%）
+- `TippingGauge.tsx` - 転倒ゲージ（プレイヤー/AI）
 - `HUD.tsx` - 統合HUDコンポーネント
 
-**傾きインジケーター**:
+**転倒ゲージ**:
 ```typescript
-interface TippingIndicatorProps {
-  tipping: number;  // 0-1（傾き度）
+interface TippingGaugeProps {
+  tipping: number;   // 0.0-1.0（1.0で転倒）
   isPlayer: boolean;
 }
 ```
 
+**実装**:
+- 傾き度を視覚化（0% → 100%）
+- 色変化:
+  - 0-50%: 緑（安全）
+  - 50-80%: 黄（警告）
+  - 80-100%: 赤（危険）
+- 100%到達で転倒判定
+
 **レトロスタイル**:
 - 8bitカラーパレット使用
-- PixelMplusドット絵フォント
-- 傾き度合いで色変化（緑 → 黄 → 赤）
-- シンプルなバーまたはメーター表示
+- M PLUS 1フォント
+- シンプルな横バー表示
 
-#### Control Components (`src/ui/controls/`)
+### Control Components
 
 **責務**: タッチ操作ボタン
 
 **コンポーネント**:
-- `TapButtons.tsx` - 2つのタップボタン群（強プッシュ、弱プッシュ）
+- `TappingButton.tsx` - 連打用ボタン（トン！）
 
 ```typescript
-interface TapButtonProps {
-  buttonType: TapButton;  // 'strong' | 'weak'
+interface TappingButtonProps {
   onTap: () => void;
-  disabled: boolean;
+  tapRate: number;  // 現在のタップレート（表示用）
 }
 ```
 
 **ボタン仕様**:
-- **強プッシュ**: 赤系色、「強」ラベル、高速前進・転倒リスク大
-- **弱プッシュ**: 青系色、「弱」ラベル、安定前進・転倒リスク小
+- **サイズ**: 最低100×100px（連打しやすい大きさ）
+- **配置**: 画面中央下部（親指が届きやすい位置）
+- **フィードバック**: タップ時にアニメーション + タップレート表示
 
 **レトロボタンデザイン**:
-- 大きなタッチターゲット（80×80px以上）
+- 大きなタッチターゲット（100×100px以上）
 - 8bitカラーで押下状態表現
-- ドット絵フォントでラベル表示
-- 連打しやすいUI配置
+- 「トン！」ラベル（M PLUS 1フォント）
+- タップレート表示（例: "5 taps/s"）
 
 #### Screen Components (`src/ui/screens/`)
 
@@ -371,7 +511,7 @@ interface TapButtonProps {
 
 **レトロ演出**:
 - 8bitカラー背景
-- PixelMplusフォント
+- M PLUS 1フォント
 - シンプルなアニメーション
 
 ### Game Scene (`src/game/GameScene.tsx`)
@@ -413,120 +553,119 @@ function GameScene() {
 **8bitカラーパレット**:
 ```css
 :root {
-  --retro-bg: #0f380f;      /* 濃い緑（ゲームボーイ風）*/
-  --retro-fg: #9bbc0f;      /* 明るい緑 */
-  --retro-accent: #8bac0f;  /* 中間緑 */
-  --retro-dark: #306230;    /* 暗い緑 */
+  --retro-bg: #3d2817;      /* 土俵の土色 */
+  --retro-fg: #f4e4c1;      /* まわしのクリーム色 */
+  --retro-accent: #8b4513;  /* 茶色まわし */
+  --retro-dark: #1a0f08;    /* 深い土色 */
 
-  --tipping-safe: #00ff00;    /* 傾き安全（緑） */
-  --tipping-warning: #ffff00; /* 傾き警告（黄） */
-  --tipping-danger: #ff0000;  /* 傾き危険（赤） */
+  --tipping-safe: #00ff00;     /* 転倒度低（緑） */
+  --tipping-warning: #ffff00;  /* 転倒度中（黄） */
+  --tipping-danger: #ff0000;   /* 転倒度高（赤） */
 
-  --strong-push: #ff4444;     /* 強プッシュ（赤系） */
-  --weak-push: #4444ff;       /* 弱プッシュ（青系） */
+  --tap-button: #ffd700;       /* トン！ボタン（ゴールド） */
 }
 ```
 
 **レトロボタンスタイル**:
 ```css
-.tap-button {
-  font-family: 'PixelMplus', monospace;
+.tapping-button {
+  font-family: 'M PLUS 1', monospace;
   border: 4px solid var(--retro-dark);
+  background: var(--tap-button);
   color: var(--retro-bg);
-  font-size: 32px;
-  padding: 24px;
+  font-size: 48px;
+  font-weight: bold;
+  padding: 32px;
   cursor: pointer;
-  min-width: 80px;
-  min-height: 80px;
+  min-width: 100px;
+  min-height: 100px;
+  border-radius: 50%;
+  user-select: none;
 }
 
-.tap-button.strong {
-  background: var(--strong-push);
-}
-
-.tap-button.weak {
-  background: var(--weak-push);
-}
-
-.tap-button:active {
-  transform: scale(0.95);
+.tapping-button:active {
+  transform: scale(0.9);
   filter: brightness(0.8);
+}
+
+.tap-rate-display {
+  font-family: 'M PLUS 1', monospace;
+  font-size: 18px;
+  color: var(--retro-fg);
+  text-align: center;
+  margin-top: 8px;
 }
 ```
 
 #### fonts.css
 
-**PixelMplusフォント読み込み**:
+**M PLUS 1フォント読み込み**:
 ```css
-@font-face {
-  font-family: 'PixelMplus';
-  src: url('/fonts/PixelMplus12-Regular.ttf') format('truetype');
-}
+@import url('https://fonts.googleapis.com/css2?family=M+PLUS+1:wght@400;700&display=swap');
 
 body {
-  font-family: 'PixelMplus', monospace;
+  font-family: 'M PLUS 1', monospace;
 }
 ```
+
+---
 
 ## データフロー
 
-### タップ操作フロー
+### タップ実行フロー
 
 ```
-User Tap Input
+User Tap
     ↓
-TapButton Component
+TappingButton Component
     ↓
-TapTracker.addTap()
+tapTracker.addTap(timestamp)
     ↓
-getTapRate() → tapRate/sec
-    ↓
-TapForceConverter
-    ├→ Calculate force (baseForce + tapRate * multiplier)
-    └→ Calculate tipping increase
-        ↓
-PhysicsEngine
-    ├→ Apply force to actor
-    ├→ Update velocity (F = ma)
-    ├→ Update position (p = p + v*dt)
-    ├→ Apply friction/air resistance
-    └→ Update rotation/tipping
-        ↓
-TippingSystem
-    └→ Check if fallen (rotation > 45°)
-        ↓
-CollisionSystem
-    ├→ Check actor-actor collision
-    └→ Check ring-out (distance > radius)
-        ↓
-Update Game State (Zustand)
-    └→ Determine winner if fallen/ring-out
+gameStore.executeTap()
+    ├→ tapRate = tapTracker.getTapRate()
+    ├→ applyTapForce(player, tapRate)
+    │   ├→ Apply forward force (TAP_FORCE × tapRate)
+    │   ├→ Apply bounce (TAP_BOUNCE × tapRate)
+    │   └→ Apply random angular velocity
+    └→ Update player physics state
         ↓
 UI Update (React)
+    └→ Display new tapRate
 ```
 
-### レンダリングフロー
+### 物理更新フロー（毎フレーム）
 
 ```
-Game Loop (requestAnimationFrame)
+useFrame(delta)
     ↓
-Calculate deltaTime
-    ↓
-Fixed Timestep Physics Update (60fps)
-    ├→ PhysicsEngine.update(fixedDeltaTime)
-    ├→ TippingSystem.update(fixedDeltaTime)
-    ├→ CollisionSystem.check()
-    └→ AI.decide() → simulateTaps()
-        ↓
-Update Zustand Store
-    ↓
-React Re-render (Zustand購読)
+gameStore.updatePhysics(delta)
+    ├→ updatePhysics(player, delta)
+    │   ├→ Apply gravity
+    │   ├→ Apply damping
+    │   ├→ Update position
+    │   ├→ Update rotation
+    │   ├→ Ground collision
+    │   └→ Calculate tipping
+    │
+    ├→ updatePhysics(opponent, delta)
+    │   └→ (same as player)
+    │
+    ├→ AI tap decision (random)
+    │   └→ applyTapForce(opponent, aiTapRate)
+    │
+    └→ Check victory conditions
+        ├→ player.isFallen? → opponent wins
+        ├→ opponent.isFallen? → player wins
+        ├→ isRingOut(player.position)? → opponent wins
+        └→ isRingOut(opponent.position)? → player wins
+            ↓
+React Re-render (Zustand subscription)
     ├→ Three.js Scene Update
-    │   ├→ Sumo positions (physics.position)
-    │   └→ Sumo rotations (physics.rotation)
-    ├→ HUD Update
-    │   └→ TippingIndicator (physics.tipping)
-    └→ Button State Update (disabled判定)
+    │   ├→ Sumo positions
+    │   └→ Sumo rotations
+    └→ HUD Update
+        ├→ TippingGauge (player.tipping, opponent.tipping)
+        └→ TapRate display
 ```
 
 ## 技術選択の理由
@@ -560,30 +699,36 @@ React Re-render (Zustand購読)
 ### カスタム物理エンジン（外部ライブラリ不使用）
 
 **選択理由**:
-- 複雑な物理演算は不要
-- バンドルサイズ削減（cannon-es ~200KB, Rapier ~500KB節約）
-- シンプルな実装で十分
+- ゲームに必要な物理は限定的（重力、減衰、回転のみ）
+- バンドルサイズ削減（cannon-es等は不要）
+- ~100行で実装可能
 - デバッグ容易
 - 完全制御可能
 
 **物理計算の実装**:
 ```typescript
-// 力の適用
-actor.forces.push(force);
+// 重力適用
+newState.velocity.y -= PHYSICS_CONSTANTS.GRAVITY * deltaTime;
 
-// 速度更新（F = ma）
-const netForce = sumForces(actor.forces);
-const acceleration = netForce.divideScalar(actor.mass);
-actor.velocity.add(acceleration.multiplyScalar(deltaTime));
-
-// 摩擦・空気抵抗
-actor.velocity.multiplyScalar(0.95);
+// 減衰適用
+newState.velocity.multiplyScalar(PHYSICS_CONSTANTS.DAMPING);
+newState.angularVelocity *= PHYSICS_CONSTANTS.ANGULAR_DAMPING;
 
 // 位置更新
-actor.position.add(actor.velocity.clone().multiplyScalar(deltaTime));
+newState.position.add(newState.velocity.clone().multiplyScalar(deltaTime));
 
-// 力をクリア
-actor.forces = [];
+// 回転更新
+newState.rotation.x += newState.angularVelocity * deltaTime;
+
+// 地面衝突
+if (newState.position.y < 0) {
+  newState.position.y = 0;
+  newState.velocity.y *= -0.3; // Bounce
+}
+
+// 転倒判定
+newState.tipping = Math.abs(newState.rotation.x) / PHYSICS_CONSTANTS.FALL_ANGLE;
+newState.isFallen = newState.tipping >= 1.0;
 ```
 
 ### Vercel
@@ -616,7 +761,7 @@ actor.forces = [];
 **目標**: 1.5MB以下
 
 達成方法:
-- **物理エンジン削除**: cannon-es/Rapier不使用（~700KB節約）
+- **カスタム物理エンジン**: cannon-es不使用（~700KB節約）
 - **基本ジオメトリのみ**: GLTFモデル不使用
 - **Tree-shaking**: Vite自動最適化
 - **コード分割**: React.lazy（必要に応じて）
@@ -628,31 +773,67 @@ actor.forces = [];
 - アクター数固定（プレイヤー + AI のみ）
 - 基本ジオメトリ再利用
 - テクスチャ不使用（色のみ）
+- 物理状態はシンプルなオブジェクト
 
-### 物理演算最適化
+### ゲームループ最適化
 
-- 固定タイムステップ（60fps）で安定性確保
-- シンプルな力の計算（F=ma）
-- 距離ベース衝突判定（高速）
-- 不要な計算スキップ（転倒後は物理更新停止）
+- Three.js `useFrame`による自動最適化
+- シンプルな物理計算（重力、減衰、回転のみ）
+- 距離ベース判定（高速）
+- 勝敗決定後は更新停止
+
+---
 
 ## テスト戦略
 
 ### ユニットテスト
 
-**Game Systems**:
-- `systems/physics.test.ts` - 力の適用、速度/位置更新、摩擦
-- `systems/tap-tracker.test.ts` - タップ計測、ウィンドウ管理
-- `systems/tap-force.test.ts` - 力変換計算（強/弱）
-- `systems/tipping.test.ts` - 転倒判定、閾値チェック
-- `systems/collision.test.ts` - 衝突判定、土俵外判定
-- `systems/ai.test.ts` - AI行動選択ロジック
+**Physics Engine**:
+- `physics/tontonzumo-physics.test.ts` - 重力、減衰、衝突、転倒判定
+- `systems/tap-tracker.test.ts` - タップレート測定、スライディングウィンドウ
+
+**Test Cases**:
+```typescript
+describe('Physics Engine', () => {
+  test('重力が正しく適用される', () => {
+    const state = updatePhysics(initialState, 1.0);
+    expect(state.velocity.y).toBeLessThan(0);
+  });
+
+  test('転倒判定が正確', () => {
+    const state = { rotation: { x: 0.7 }, ... };
+    expect(state.isFallen).toBe(true); // 0.7 > FALL_ANGLE(0.6)
+  });
+
+  test('土俵外判定が正確', () => {
+    const position = new Vector3(5, 0, 0);
+    expect(isRingOut(position)).toBe(true); // 5 > 4.5
+  });
+});
+
+describe('TapTracker', () => {
+  test('1秒間のタップ数を正確に測定', () => {
+    const tracker = new TapTracker();
+    tracker.addTap(0);
+    tracker.addTap(200);
+    tracker.addTap(500);
+    expect(tracker.getTapRate()).toBe(3);
+  });
+
+  test('古いタップを自動削除', () => {
+    const tracker = new TapTracker();
+    tracker.addTap(0);
+    tracker.addTap(1200); // 1秒後
+    expect(tracker.getTapRate()).toBe(1); // 最初のタップは削除済み
+  });
+});
+```
 
 ### 統合テスト
 
 **ゲームフロー**:
 - タイトル → バトル → リザルト画面遷移
-- タップ操作と力の適用
+- タップ操作と物理シミュレーション
 - 転倒による勝敗判定
 - 土俵外による勝敗判定
 
@@ -660,7 +841,7 @@ actor.forces = [];
 
 **実機テスト**:
 - iOS Safari, Android Chrome
-- タップ操作の精度と反応速度
+- タップ操作の反応速度（連打しやすさ）
 - FPS測定（30fps以上維持）
 - バンドルサイズ検証（1.5MB以下）
 
@@ -696,8 +877,8 @@ actor.forces = [];
 - [Vite Documentation](https://vitejs.dev/)
 
 **レトロデザイン**:
-- [PixelMplus Font](https://itouhiro.hatenablog.com/entry/20130602/font) - ドット絵風日本語フォント
-- 8bit Color Palette - ゲームボーイ風カラー
+- [M PLUS 1 Font](https://fonts.google.com/specimen/M+PLUS+1) - 日本語対応レトロ風フォント
+- 8bit Color Palette - レトロゲーム風カラー
 
 **デプロイ**:
 - [Vercel Documentation](https://vercel.com/docs)

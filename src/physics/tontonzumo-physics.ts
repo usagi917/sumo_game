@@ -67,6 +67,16 @@ export function updateActorPhysics(
   newActor.tipping =
     Math.abs(newActor.rotation.x) / PHYSICS_CONSTANTS.FALL_ANGLE;
 
+  // Debug: Log high tipping values
+  if (newActor.tipping > 0.5) {
+    console.log('High tipping:', {
+      tipping: newActor.tipping,
+      rotationX: newActor.rotation.x,
+      velocity: newActor.velocity.length(),
+      angularVelocity: newActor.angularVelocity,
+    });
+  }
+
   // 8. Fall detection
   if (
     newActor.tipping >= 1.0 &&
@@ -103,7 +113,8 @@ export function applyTapForce(actor: PhysicsState, tapRate: number): PhysicsStat
   newActor.velocity.y += PHYSICS_CONSTANTS.TAP_BOUNCE;
 
   // Random wobble (X-axis rotation)
-  newActor.angularVelocity += random(-0.1, 0.1);
+  // Increased from random(-0.1, 0.1) to make game more dynamic
+  newActor.angularVelocity += random(-1.0, 1.0);
 
   return newActor;
 }

@@ -47,28 +47,28 @@ export class AIEngine {
     // Determine tap rate based on state
     let tapRate: number;
 
-    // 1. If self is tipping badly (> 0.6), slow down to stabilize
-    if (self.tipping > 0.6) {
-      tapRate = this.randomInRange(4, 6); // Slow, cautious taps
+    // 1. If self is tipping badly (> 0.45), STOP to let it stabilize
+    if (self.tipping > 0.45) {
+      tapRate = 0; // Stop tapping to stabilize
     }
     // 2. If opponent is tipping (> 0.5), attack aggressively
     else if (opponent.tipping > 0.5) {
-      tapRate = this.randomInRange(10, 15); // Fast, aggressive taps
+      tapRate = this.randomInRange(3, 4.5); // Strong pressure
     }
-    // 3. If close distance (< 2.0), tap fast to push
+    // 3. If close distance (< 2.0), tap at normal rate to push
     else if (distance < 2.0) {
-      tapRate = this.randomInRange(8, 12); // High-speed taps
+      tapRate = this.randomInRange(2.2, 3.2); // Active pushing
     }
-    // 4. Default: Medium tap rate
+    // 4. Default: Competitive tap rate (match player's typical pace)
     else {
-      tapRate = this.randomInRange(5, 8); // Balanced taps
+      tapRate = this.randomInRange(1.8, 2.5); // Competitive taps
     }
 
     // Convert tap rate to interval (ms between taps)
-    this.tapInterval = 1000 / tapRate;
+    this.tapInterval = tapRate > 0 ? 1000 / tapRate : Infinity;
 
     // Check if it's time to tap
-    const shouldTap = currentTime - this.lastTapTime >= this.tapInterval;
+    const shouldTap = tapRate > 0 && currentTime - this.lastTapTime >= this.tapInterval;
 
     if (shouldTap) {
       this.lastTapTime = currentTime;

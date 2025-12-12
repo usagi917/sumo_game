@@ -29,9 +29,9 @@ export const TippingIndicator: React.FC<TippingIndicatorProps> = ({
 
   // Determine color based on tipping level
   const getColor = (tipping: number): string => {
-    if (tipping < 0.5) return '#4caf50'; // Green: Safe
-    if (tipping < 0.8) return '#ff9800'; // Orange: Warning
-    return '#f44336'; // Red: Danger
+    if (tipping < 0.5) return 'var(--tipping-safe)'; // Green: Safe
+    if (tipping < 0.8) return 'var(--tipping-warning)'; // Orange: Warning
+    return 'var(--tipping-danger)'; // Red: Danger
   };
 
   const color = getColor(actor.tipping);
