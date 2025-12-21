@@ -71,7 +71,7 @@ npm run build
 ```mermaid
 flowchart TD
   T[タイトル画面<br/>現在の番付表示] -->|試合開始| B[1本勝負<br/>AI対戦]
-  B -->|勝利| W[3連勝で昇進]
+  B -->|勝利| W[昇進規定の連勝で昇格]
   B -->|敗北| L[降格]
   W --> RES[リザルト表示<br/>昇進/維持]
   L --> RES
@@ -82,12 +82,14 @@ flowchart TD
 ### 番付システム
 
 **階級制度**:
-- 前頭（最低）→ 小結 → 関脇 → 大関 → 横綱（最高）
+- 十両（開始）→ 幕内 → 小結 → 関脇 → 大関 → 横綱（最高）
 
 **昇進・降格ルール**:
-- **昇進**: 3連勝で次の階級へ昇進
-- **降格**: 1敗で前の階級へ降格（前頭は降格なし）
-- **横綱**: 最高位、敗北しても降格しない
+- **昇進**: 現在の階級に応じた連勝数が必要
+  - 十両・幕内・小結: **1勝**で昇進
+  - 関脇: **2連勝**で大関へ昇進
+  - 大関: **3連勝**で横綱へ昇進
+- **降格**: **1敗**で前の階級へ降格（十両は降格なし）
 - **連勝**: 敗北するとリセットされる
 
 **戦績の保存**:
@@ -97,7 +99,7 @@ flowchart TD
 ## 技術スタック
 
 - **フロントエンド**: Vite + React + TypeScript
-- **3Dレンダリング**: Three.js + @react-three/fiber（基本ジオメトリのみ使用）
+- **3Dレンダリング**: Three.js + @react-three/fiber + @react-three/drei
 - **状態管理**: Zustand
 - **レトロスタイル**: CSS + ピクセルフォント（M PLUS 1）
 - **デプロイ**: Vercel（静的ビルド）
@@ -108,40 +110,49 @@ flowchart TD
 
 ```
 src/
-├── types/             # 型定義（共有インターフェース）
-│   └── game.ts        # PhysicsState, GameState
+├── types/             # 型定義
+│   └── game.ts        # 共通インターフェース
 │
-├── state/             # Zustand状態管理
-│   └── gameStore.ts   # グローバルゲームステート
+├── state/             # 状態管理（Zustand）
+│   ├── gameStore.ts   # 試合状況、進行管理
+│   └── rankingStore.ts # 番付、戦績の永続化
 │
-├── physics/           # 物理エンジン
-│   └── tontonzumo-physics.ts  # 重力、衝突、転倒判定
+├── physics/           # 物理演算
+│   ├── constants.ts   # 物理定数
+│   └── tontonzumo-physics.ts # 物理挙動ロジック
 │
-├── systems/           # ゲームシステム
+├── systems/           # 非表示のシステム
+│   ├── ai.ts          # 対戦相手の思考ロジック
+│   ├── collision.ts   # 衝突判定
+│   ├── sound.ts       # 効果音管理
 │   └── tap-tracker.ts # タップレート測定
 │
-├── components/        # Reactコンポーネント
-│   ├── game/          # Sumo.tsx（力士）、Ring.tsx（土俵）
-│   │   └── GameScene.tsx  # 3Dシーン統合
-│   ├── ui/            # TitleScreen、ResultScreen、TappingUI
-│   └── screens/       # タイトル、リザルト画面
+├── components/        # UI/シーンコンポーネント
+│   ├── controls/      # 操作ボタン
+│   ├── hud/           # ステータス表示
+│   ├── scene/         # 3Dオブジェクト（力士、土俵、演出）
+│   └── screens/       # 画面（タイトル、試合、結果）
 │
-└── styles/            # レトロスタイル
-    └── index.css      # 8bitカラーパレット、M PLUS 1フォント
+├── styles/            # スタイルシート
+│   ├── fonts.css      # フォント設定
+│   └── retro.css      # レトロ演出用スタイル
+│
+└── utils/             # ユーティリティ
+    └── textureGenerator.ts # 動的なテクスチャ生成
 ```
 
 ## 開発ガイド
 
-### テスト実行
+### 開発サーバー起動
 
 ```bash
-npm test
+npm run dev
 ```
 
-### 型チェック
+### ビルド
 
 ```bash
-npm run typecheck
+npm run build
 ```
 
 ### リント
