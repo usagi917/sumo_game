@@ -2,12 +2,13 @@
  * Ranking State Store
  *
  * Manages traditional sumo ranking progression system (番付システム).
- * Players start at 前頭 (Maegashira) and advance through ranks based on consecutive wins.
+ * Players start at 十両 and advance through ranks.
  *
- * Based on plan.md specification:
- * - 3 consecutive wins = promotion (except at 横綱)
- * - 1 loss = demotion (except at 前頭) + reset consecutive wins
- * - 横綱 (Yokozuna) maintains rank regardless of results
+ * Promotion rules:
+ * - 十両→幕内→小結→関脇: 1勝で昇進
+ * - 関脇→大関: 2連勝で昇進
+ * - 大関→横綱: 3連勝で昇進
+ * - 負けると1ランク降格（十両より下には落ちない）
  * - Persists to localStorage
  */
 
@@ -15,24 +16,33 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 /**
- * Sumo rank levels (0-4)
- * 0: 前頭 (Maegashira) - Lowest rank
- * 1: 小結 (Komusubi)
- * 2: 関脇 (Sekiwake)
- * 3: 大関 (Ozeki)
- * 4: 横綱 (Yokozuna) - Highest rank
+ * Sumo rank levels (0-5)
+ * 0: 十両 (Juryo) - Starting rank
+ * 1: 幕内 (Makuuchi)
+ * 2: 小結 (Komusubi)
+ * 3: 関脇 (Sekiwake)
+ * 4: 大関 (Ozeki)
+ * 5: 横綱 (Yokozuna) - Highest rank
  */
-export type SumoRank = 0 | 1 | 2 | 3 | 4;
+export type SumoRank = 0 | 1 | 2 | 3 | 4 | 5;
 
 /**
  * Rank names in Japanese
  */
-export const RANK_NAMES = ['前頭', '小結', '関脇', '大関', '横綱'] as const;
+export const RANK_NAMES = ['十両', '幕内', '小結', '関脇', '大関', '横綱'] as const;
 
 /**
- * Promotion requirement
+ * Promotion requirements per rank
+ * Key: current rank, Value: consecutive wins needed
  */
-export const WINS_REQUIRED_FOR_PROMOTION = 3;
+export const WINS_REQUIRED: Record<SumoRank, number> = {
+  0: 1, // 十両→幕内: 1勝
+  1: 1, // 幕内→小結: 1勝
+  2: 1, // 小結→関脇: 1勝
+  3: 2, // 関脇→大関: 2連勝
+  4: 3, // 大関→横綱: 3連勝
+  5: 0, // 横綱: 昇進なし
+};
 
 /**
  * Result of last ranking action
@@ -91,10 +101,10 @@ export const useRankingStore = create<RankingStore>()(
           const newConsecutiveWins = state.consecutiveWins + 1;
           const newTotalWins = state.totalWins + 1;
 
-          // Check for promotion (3 consecutive wins + not at max rank)
+          // Check for promotion based on current rank requirements
+          const winsNeeded = WINS_REQUIRED[state.currentRank];
           const canPromote =
-            newConsecutiveWins >= WINS_REQUIRED_FOR_PROMOTION &&
-            state.currentRank < 4;
+            newConsecutiveWins >= winsNeeded && state.currentRank < 5;
 
           if (canPromote) {
             // Promote and reset consecutive wins
@@ -123,17 +133,7 @@ export const useRankingStore = create<RankingStore>()(
         set((state) => {
           const newTotalLosses = state.totalLosses + 1;
 
-          // 横綱 (rank 4) never demotes
-          if (state.currentRank === 4) {
-            return {
-              ...state,
-              consecutiveWins: 0, // Still reset streak
-              totalLosses: newTotalLosses,
-              lastAction: 'loss' as RankAction,
-            };
-          }
-
-          // 前頭 (rank 0) cannot demote further
+          // 十両 (rank 0) cannot demote further
           const canDemote = state.currentRank > 0;
 
           if (canDemote) {
@@ -146,10 +146,10 @@ export const useRankingStore = create<RankingStore>()(
               lastAction: 'demoted' as RankAction,
             };
           } else {
-            // Just record loss at 前頭
+            // Just record loss at 十両
             return {
               ...state,
-              consecutiveWins: 0, // Reset streak even at 前頭
+              consecutiveWins: 0,
               totalLosses: newTotalLosses,
               lastAction: 'loss' as RankAction,
             };
@@ -163,7 +163,7 @@ export const useRankingStore = create<RankingStore>()(
     }),
     {
       name: 'sumoRanking', // localStorage key
-      version: 1,
+      version: 2, // Increment version for new rank system
     }
   )
 );
@@ -185,10 +185,10 @@ export const useCurrentRankName = () => {
  */
 export const useWinsUntilPromotion = () => {
   const state = useRankingStore();
-  if (state.currentRank === 4) {
+  if (state.currentRank === 5) {
     return 0; // Already at max rank
   }
-  return WINS_REQUIRED_FOR_PROMOTION - state.consecutiveWins;
+  return WINS_REQUIRED[state.currentRank] - state.consecutiveWins;
 };
 
 /**
@@ -196,7 +196,7 @@ export const useWinsUntilPromotion = () => {
  */
 export const useNextRankName = () => {
   const rank = useRankingStore((state) => state.currentRank);
-  if (rank === 4) {
+  if (rank === 5) {
     return null; // No next rank
   }
   return RANK_NAMES[rank + 1];
@@ -207,7 +207,7 @@ export const useNextRankName = () => {
  */
 export const useIsYokozuna = () => {
   const rank = useRankingStore((state) => state.currentRank);
-  return rank === 4;
+  return rank === 5;
 };
 
 /**

@@ -1,44 +1,44 @@
 /**
  * Game Screen Component
  *
- * Main battle screen combining:
+ * Main battle screen for gauge-based sumo battle.
  * - 3D scene (background)
- * - HUD (overlay)
- * - Controls (overlay)
- *
- * Based on TECHNICAL_DESIGN.md specification.
+ * - HUD with HP, Gauge, Rank (overlay)
+ * - Ton button (overlay)
  */
 
-import React, { useEffect } from 'react';
+import React, { useEffect, useRef } from 'react';
 import GameScene from '../scene/GameScene';
 import HUD from '../hud/HUD';
 import { TonButton } from '../controls/TonButton';
 import { useGameActions, useGameStore } from '../../state/gameStore';
+import { useRankingStore } from '../../state/rankingStore';
 import { AIEngine } from '../../systems/ai';
-import { applyTapForce } from '../../physics/tontonzumo-physics';
+import { playCollisionSound, playStartSound, resumeAudio } from '../../systems/sound';
+import { PHYSICS_CONSTANTS } from '../../physics/constants';
 
-/**
- * Game Screen Props
- */
 export interface GameScreenProps {
-  /** Optional className */
   className?: string;
 }
 
-// AI engine instance (singleton for game)
+// AI engine singleton
 const aiEngine = new AIEngine();
 
-/**
- * Game Screen Component
- * Complete battle screen with physics-based game loop
- */
 export default function GameScreen({ className = '' }: GameScreenProps) {
-  const { updatePhysics } = useGameActions();
+  const { updatePhysics, executeAITap } = useGameActions();
+  const currentRank = useRankingStore((state) => state.currentRank);
+  const lastCollisionTime = useRef(0);
 
-  // Physics game loop effect
+  // Play start sound when battle begins
   useEffect(() => {
-    // Reset AI state when game starts
+    resumeAudio();
+    playStartSound();
+  }, []);
+
+  // Game loop
+  useEffect(() => {
     aiEngine.reset();
+    aiEngine.setRank(currentRank);
 
     let lastTime = performance.now();
     let animationId: number;
@@ -46,52 +46,58 @@ export default function GameScreen({ className = '' }: GameScreenProps) {
     const gameLoop = () => {
       const state = useGameStore.getState();
       const currentTime = performance.now();
-      const deltaTime = (currentTime - lastTime) / 1000; // Convert to seconds
+      const deltaTime = (currentTime - lastTime) / 1000;
       lastTime = currentTime;
 
-      // Only update during battle
       if (state.gameStatus === 'battle') {
-        // Update physics simulation
+        // Update physics
         updatePhysics(deltaTime);
 
-        // Update AI
-        const aiDecision = aiEngine.decide(
-          state.opponent,
-          state.player,
-          currentTime
+        // Collision sound (throttled)
+        const playerPos = state.player.position;
+        const opponentPos = state.opponent.position;
+        const distance = Math.sqrt(
+          (opponentPos.x - playerPos.x) ** 2 +
+          (opponentPos.z - playerPos.z) ** 2
         );
 
-        if (aiDecision.shouldTap) {
-          // AI executes tap - update opponent state
-          const newOpponent = applyTapForce(state.opponent, aiDecision.tapRate);
-          useGameStore.setState({ opponent: newOpponent });
+        if (distance < PHYSICS_CONSTANTS.COLLISION_THRESHOLD) {
+          if (currentTime - lastCollisionTime.current > 200) {
+            playCollisionSound();
+            lastCollisionTime.current = currentTime;
+          }
+        }
+
+        // AI taps during charging phase
+        if (state.battlePhase === 'charging') {
+          const aiDecision = aiEngine.decide(currentTime);
+          if (aiDecision.shouldTap) {
+            executeAITap();
+          }
         }
       }
 
-      // Continue loop regardless of game status
       animationId = requestAnimationFrame(gameLoop);
     };
 
-    // Start game loop
     animationId = requestAnimationFrame(gameLoop);
 
-    // Cleanup on unmount
     return () => {
       if (animationId) {
         cancelAnimationFrame(animationId);
       }
     };
-  }, [updatePhysics]);
+  }, [updatePhysics, executeAITap, currentRank]);
 
   return (
     <div className={`full-screen ${className}`} style={{ position: 'relative' }}>
-      {/* 3D Scene (background) */}
+      {/* 3D Scene */}
       <GameScene />
 
-      {/* HUD (overlay) */}
+      {/* HUD */}
       <HUD />
 
-      {/* Controls (overlay) - positioned at bottom */}
+      {/* Ton Button */}
       <div
         style={{
           position: 'absolute',

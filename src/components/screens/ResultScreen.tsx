@@ -1,76 +1,55 @@
 /**
  * Result Screen Component
  *
- * Victory/defeat screen showing match results and ranking updates
- * Records win/loss to ranking system and displays rank changes
- * Option to replay or return to title
+ * Victory/defeat screen showing match results and ranking updates.
+ * Records win/loss to ranking system and displays rank changes.
  */
 
-import { useEffect } from 'react';
-import { useGameActions, useWinner, usePlayer, useOpponent } from '../../state/gameStore';
+import { useEffect, useRef } from 'react';
+import { useGameActions, useWinner } from '../../state/gameStore';
 import {
   useRankingStore,
   useCurrentRankName,
   useWinsUntilPromotion,
   useNextRankName,
-  RANK_NAMES,
+  WINS_REQUIRED,
 } from '../../state/rankingStore';
+import { playVictorySound, playDefeatSound } from '../../systems/sound';
 
-/**
- * Result Screen Props
- */
 export interface ResultScreenProps {
-  /** Optional className */
   className?: string;
 }
 
-/**
- * Result Screen Component
- * Shows match outcome, ranking updates, and replay option
- */
 export default function ResultScreen({ className = '' }: ResultScreenProps) {
   const winner = useWinner();
-  const player = usePlayer();
-  const opponent = useOpponent();
   const { startNewGame, setGameStatus } = useGameActions();
 
   // Ranking state
-  const { recordWin, recordLoss, lastAction } = useRankingStore();
+  const { recordWin, recordLoss, lastAction, currentRank } = useRankingStore();
   const currentRankName = useCurrentRankName();
   const winsUntilPromotion = useWinsUntilPromotion();
   const nextRankName = useNextRankName();
   const consecutiveWins = useRankingStore((state) => state.consecutiveWins);
+  const winsNeeded = WINS_REQUIRED[currentRank];
 
-  // Record win/loss on mount (only once)
+  // Record win/loss and play sound on mount (only once)
+  const recorded = useRef(false);
   useEffect(() => {
+    if (recorded.current) return;
+    recorded.current = true;
+
     if (winner === 'player') {
       recordWin();
+      playVictorySound();
     } else {
       recordLoss();
+      playDefeatSound();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - run only on mount
+  }, [winner, recordWin, recordLoss]);
 
-  // Determine if player won
   const playerWon = winner === 'player';
-  const resultText = playerWon ? 'あなたの勝ち!' : '負けました...';
-  const resultColor = playerWon ? 'var(--hp-green)' : 'var(--hp-red)';
-
-  // Determine win condition
-  let winCondition = '';
-  if (playerWon) {
-    if (opponent.isFallen) {
-      winCondition = '転倒勝ち!';
-    } else {
-      winCondition = '押し出し勝ち!';
-    }
-  } else {
-    if (player.isFallen) {
-      winCondition = '転倒で敗北';
-    } else {
-      winCondition = '押し出された!';
-    }
-  }
+  const resultText = playerWon ? '勝ち!' : '負け...';
+  const resultColor = playerWon ? '#4caf50' : '#f44336';
 
   const handleReplay = () => {
     startNewGame();
@@ -81,84 +60,55 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
   };
 
   return (
-    <div className={`full-screen center-content ${className}`}>
+    <div className={`full-screen scrollable center-content ${className}`}>
       {/* Result Message */}
       <h1
         className="retro-title"
         style={{
           color: resultColor,
-          marginBottom: 'var(--spacing-lg)',
+          marginBottom: '16px',
+          fontSize: '48px',
         }}
       >
         {resultText}
       </h1>
 
-      {/* Win Condition */}
-      <p
-        className="retro-subtitle"
-        style={{
-          marginBottom: 'var(--spacing-xl)',
-        }}
-      >
-        {winCondition}
-      </p>
-
-      {/* Stats Panel */}
-      <div
-        className="retro-panel"
-        style={{
-          marginBottom: 'var(--spacing-md)',
-          padding: 'var(--spacing-lg)',
-          minWidth: '300px',
-        }}
-      >
-        <p className="retro-text" style={{ marginBottom: 'var(--spacing-sm)' }}>
-          <strong>最終結果:</strong>
-        </p>
-        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 'var(--spacing-xs)' }}>
-          <span className="retro-text">あなたの傾き:</span>
-          <span className="retro-text" style={{ color: player.isFallen ? 'var(--hp-red)' : 'var(--hp-green)' }}>
-            {Math.round(player.tipping * 100)}%
-          </span>
-        </div>
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-          <span className="retro-text">あいての傾き:</span>
-          <span className="retro-text" style={{ color: opponent.isFallen ? 'var(--hp-red)' : 'var(--hp-green)' }}>
-            {Math.round(opponent.tipping * 100)}%
-          </span>
-        </div>
-      </div>
-
       {/* Ranking Update Panel */}
       <div
         className="retro-panel"
         style={{
-          marginBottom: 'var(--spacing-xl)',
-          padding: 'var(--spacing-lg)',
-          minWidth: '300px',
+          padding: '24px',
           textAlign: 'center',
+          minWidth: '280px',
+          marginBottom: '24px',
         }}
       >
         {/* Promotion */}
         {lastAction === 'promoted' && (
           <div>
             <p
-              className="retro-text"
               style={{
-                fontSize: 'var(--font-lg)',
+                fontSize: '28px',
                 fontWeight: 'bold',
-                color: 'var(--tapping-safe)',
-                marginBottom: 'var(--spacing-sm)',
-                textShadow: '2px 2px 0 var(--retro-dark)',
+                color: '#ffd700',
+                marginBottom: '12px',
+                textShadow: '2px 2px 0 #000',
               }}
             >
               ★ 昇進！ ★
             </p>
-            <p className="retro-text" style={{ fontSize: 'var(--font-md)', marginBottom: 'var(--spacing-xs)' }}>
-              新番付: <strong style={{ color: 'var(--retro-accent)', fontSize: 'var(--font-lg)' }}>{currentRankName}</strong>
+            <p style={{ fontSize: '20px', marginBottom: '8px', color: '#fff' }}>
+              新番付
             </p>
-            <p className="retro-text" style={{ fontSize: 'var(--font-sm)', opacity: 0.8 }}>
-              3連勝達成！
+            <p
+              style={{
+                fontSize: '36px',
+                fontWeight: 'bold',
+                color: '#ffd700',
+                textShadow: '2px 2px 0 #000',
+              }}
+            >
+              {currentRankName}
             </p>
           </div>
         )}
@@ -167,73 +117,78 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
         {lastAction === 'demoted' && (
           <div>
             <p
-              className="retro-text"
               style={{
-                fontSize: 'var(--font-lg)',
+                fontSize: '24px',
                 fontWeight: 'bold',
-                color: 'var(--hp-red)',
-                marginBottom: 'var(--spacing-sm)',
+                color: '#f44336',
+                marginBottom: '12px',
               }}
             >
               降格...
             </p>
-            <p className="retro-text" style={{ fontSize: 'var(--font-md)', marginBottom: 'var(--spacing-xs)' }}>
-              現番付: <strong>{currentRankName}</strong>
+            <p style={{ fontSize: '20px', marginBottom: '8px', color: '#fff' }}>
+              現番付
             </p>
-            <p className="retro-text" style={{ fontSize: 'var(--font-sm)', opacity: 0.8 }}>
-              次の昇進まであと3勝
+            <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#fff' }}>
+              {currentRankName}
             </p>
           </div>
         )}
 
         {/* Win (no rank change) */}
-        {lastAction === 'win' && playerWon && (
+        {lastAction === 'win' && (
           <div>
-            <p className="retro-text" style={{ fontSize: 'var(--font-md)', marginBottom: 'var(--spacing-xs)' }}>
-              番付: <strong style={{ color: 'var(--retro-accent)' }}>{currentRankName}</strong>
+            <p style={{ fontSize: '20px', marginBottom: '8px', color: '#fff' }}>
+              番付
             </p>
-            <p className="retro-text" style={{ fontSize: 'var(--font-sm)', color: 'var(--tapping-safe)' }}>
-              連勝: {consecutiveWins} / 3
+            <p
+              style={{
+                fontSize: '32px',
+                fontWeight: 'bold',
+                color: '#ffd700',
+                marginBottom: '16px',
+              }}
+            >
+              {currentRankName}
             </p>
-            {nextRankName && (
-              <p className="retro-text" style={{ fontSize: 'var(--font-xs)', opacity: 0.8 }}>
-                あと{winsUntilPromotion}勝で{nextRankName}
+            {winsNeeded > 1 && (
+              <p style={{ fontSize: '16px', color: '#4caf50' }}>
+                昇進まで {consecutiveWins}/{winsNeeded}勝
+              </p>
+            )}
+            {winsNeeded === 1 && nextRankName && (
+              <p style={{ fontSize: '16px', color: '#4caf50' }}>
+                あと1勝で{nextRankName}
               </p>
             )}
           </div>
         )}
 
-        {/* Loss (no rank change - at 前頭 or 横綱) */}
-        {lastAction === 'loss' && !playerWon && (
+        {/* Loss (no rank change - at 十両) */}
+        {lastAction === 'loss' && (
           <div>
-            <p className="retro-text" style={{ fontSize: 'var(--font-md)', marginBottom: 'var(--spacing-xs)' }}>
-              番付: <strong>{currentRankName}</strong>
+            <p style={{ fontSize: '20px', marginBottom: '8px', color: '#fff' }}>
+              番付
             </p>
-            <p className="retro-text" style={{ fontSize: 'var(--font-sm)', opacity: 0.8 }}>
-              連勝記録リセット
+            <p style={{ fontSize: '32px', fontWeight: 'bold', color: '#fff' }}>
+              {currentRankName}
             </p>
-            {currentRankName === '前頭' && (
-              <p className="retro-text" style={{ fontSize: 'var(--font-xs)', opacity: 0.8 }}>
-                （前頭からは降格なし）
-              </p>
-            )}
-            {currentRankName === '横綱' && (
-              <p className="retro-text" style={{ fontSize: 'var(--font-xs)', opacity: 0.8 }}>
-                （横綱は降格なし）
-              </p>
-            )}
+            <p style={{ fontSize: '14px', color: '#aaa', marginTop: '12px' }}>
+              （十両からは降格なし）
+            </p>
           </div>
         )}
       </div>
 
       {/* Action Buttons */}
-      <div style={{ display: 'flex', gap: 'var(--spacing-md)' }}>
+      <div style={{ display: 'flex', gap: '16px' }}>
         <button
           className="retro-button"
           onClick={handleReplay}
           style={{
-            fontSize: 'var(--font-md)',
-            padding: 'var(--spacing-md) var(--spacing-lg)',
+            fontSize: '18px',
+            padding: '16px 32px',
+            backgroundColor: '#4caf50',
           }}
         >
           もう一度
@@ -243,9 +198,9 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
           className="retro-button"
           onClick={handleReturnToTitle}
           style={{
-            fontSize: 'var(--font-md)',
-            padding: 'var(--spacing-md) var(--spacing-lg)',
-            backgroundColor: 'var(--retro-dark)',
+            fontSize: '18px',
+            padding: '16px 32px',
+            backgroundColor: '#666',
           }}
         >
           タイトルへ

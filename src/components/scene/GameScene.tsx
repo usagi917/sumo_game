@@ -14,6 +14,48 @@ import Ring from './Ring';
 import Actor from './Actor';
 import ImpactEffect from './ImpactEffect';
 import { usePlayer, useOpponent } from '../../state/gameStore';
+import type { Actor as ActorType, ActorState } from '../../types/game';
+
+/**
+ * Convert PhysicsState to Actor type with visual state
+ */
+function toActor(
+  physics: ReturnType<typeof usePlayer>,
+  id: 'player' | 'opponent',
+  otherPhysics: ReturnType<typeof usePlayer>
+): ActorType {
+  // Determine visual state based on physics
+  let state: ActorState = 'idle';
+
+  const speed = Math.sqrt(
+    physics.velocity.x ** 2 + physics.velocity.y ** 2 + physics.velocity.z ** 2
+  );
+
+  // If moving fast toward opponent, attacking
+  if (speed > 1.5) {
+    const movingToward = id === 'player'
+      ? physics.velocity.z < -0.5
+      : physics.velocity.z > 0.5;
+    if (movingToward) {
+      state = 'attacking';
+    }
+  }
+
+  // If being pushed back or tipping, damaged
+  if (physics.tipping > 0.3) {
+    state = 'damaged';
+  }
+
+  return {
+    id,
+    state,
+    position: { x: physics.position.x, y: physics.position.y, z: physics.position.z },
+    velocity: { x: physics.velocity.x, y: physics.velocity.y, z: physics.velocity.z },
+    rotation: { x: physics.rotation.x, y: physics.rotation.y, z: physics.rotation.z },
+    tipping: physics.tipping,
+    isFallen: physics.isFallen,
+  };
+}
 
 /**
  * Game Scene Props
@@ -28,25 +70,29 @@ export interface GameSceneProps {
  * Separated for Suspense boundary
  */
 function SceneContents() {
-  const player = usePlayer();
-  const opponent = useOpponent();
+  const playerPhysics = usePlayer();
+  const opponentPhysics = useOpponent();
+
+  // Convert physics state to actor with visual state
+  const player = toActor(playerPhysics, 'player', opponentPhysics);
+  const opponent = toActor(opponentPhysics, 'opponent', playerPhysics);
 
   return (
     <>
 
-      {/* OrbitControls - 回転を制限してお相撲さんが常に見えるように */}
+      {/* OrbitControls - 向正面から見る（回転制限付き） */}
       <OrbitControls
         enablePan={false}
         enableZoom={true}
         enableRotate={true}
-        minDistance={5}
-        maxDistance={12}
-        // 上下の回転を厳しく制限（常に斜め上から見下ろす）
-        maxPolarAngle={Math.PI / 3} // 60度まで（真横に行かない）
-        minPolarAngle={Math.PI / 6} // 30度から（真上に行かない）
-        // 水平方向の回転も制限（正面付近のみ）
-        minAzimuthAngle={-Math.PI / 3} // 左60度まで
-        maxAzimuthAngle={Math.PI / 3}  // 右60度まで
+        minDistance={6}
+        maxDistance={14}
+        // 上下の回転を制限（斜め上から見下ろす）
+        maxPolarAngle={Math.PI / 2.5} // 72度まで
+        minPolarAngle={Math.PI / 5}   // 36度から
+        // 水平方向の回転も制限
+        minAzimuthAngle={-Math.PI / 4} // 左45度まで
+        maxAzimuthAngle={Math.PI / 4}  // 右45度まで
         rotateSpeed={0.3}
         zoomSpeed={0.8}
         // 土俵の中心を見る
@@ -103,10 +149,10 @@ export default function GameScene({ className }: GameSceneProps) {
         }}
         dpr={deviceDpr}
         shadows={true}
-        // Camera setup - 斜め上から見下ろす固定アングル（相撲中継っぽく！）
+        // Camera setup - 向正面から見る（プレイヤーが奥、相手が手前）
         camera={{
-          position: [0, 6, 10],
-          fov: 45,
+          position: [0, 7, -12],
+          fov: 40,
           near: 0.1,
           far: 100,
         }}

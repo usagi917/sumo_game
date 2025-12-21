@@ -7,9 +7,9 @@
  */
 
 import { useRef, useMemo, useState } from 'react';
-import { CanvasTexture, DoubleSide, NearestFilter, type Mesh, Color } from 'three';
+import { CanvasTexture, DoubleSide, NearestFilter, type Mesh, Color, MeshStandardMaterial } from 'three';
 import { useFrame } from '@react-three/fiber';
-import type { Actor as ActorType } from '../../types/game';
+import type { Actor as ActorType, ActorState } from '../../types/game';
 import { generateSumoTexture } from '../../utils/textureGenerator';
 
 /**
@@ -61,7 +61,7 @@ export default function Actor({ actor, color }: ActorProps) {
     if (!meshRef.current) return;
 
     const time = state.clock.getElapsedTime();
-    const material = meshRef.current.material as THREE.MeshStandardMaterial;
+    const material = meshRef.current.material as MeshStandardMaterial;
     
     // Detect state transitions
     if (actor.state !== prevState) {

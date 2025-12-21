@@ -1,3 +1,8 @@
+/**
+ * Texture Generator
+ *
+ * Generates pixel art sumo wrestler textures procedurally.
+ */
 
 export function generateSumoTexture(color: string, isOpponent: boolean = false): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -44,10 +49,9 @@ export function generateSumoTexture(color: string, isOpponent: boolean = false):
   drawRect(30, 2, 4, 4, hairColor);  // Mage (top knot)
 
   // --- Mawashi (Belt) ---
-  // Use the provided color (team color) or default yellow
-  const mawashiColor = color; 
+  const mawashiColor = color;
   drawRect(16, 36, 32, 10, mawashiColor); // Main belt
-  
+
   // Shide (White paper zigzags) - distinctive sumo feature
   const shideColor = '#ffffff';
   drawRect(20, 38, 4, 6, shideColor);
@@ -71,26 +75,4 @@ export function generateSumoTexture(color: string, isOpponent: boolean = false):
 
   return canvas;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

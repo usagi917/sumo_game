@@ -67,16 +67,6 @@ export function updateActorPhysics(
   newActor.tipping =
     Math.abs(newActor.rotation.x) / PHYSICS_CONSTANTS.FALL_ANGLE;
 
-  // Debug: Log high tipping values
-  if (newActor.tipping > 0.5) {
-    console.log('High tipping:', {
-      tipping: newActor.tipping,
-      rotationX: newActor.rotation.x,
-      velocity: newActor.velocity.length(),
-      angularVelocity: newActor.angularVelocity,
-    });
-  }
-
   // 8. Fall detection
   if (
     newActor.tipping >= 1.0 &&
@@ -113,8 +103,10 @@ export function applyTapForce(actor: PhysicsState, tapRate: number): PhysicsStat
   newActor.velocity.y += PHYSICS_CONSTANTS.TAP_BOUNCE;
 
   // Random wobble (X-axis rotation)
-  // Increased from random(-0.1, 0.1) to make game more dynamic
-  newActor.angularVelocity += random(-1.0, 1.0);
+  newActor.angularVelocity += random(
+    -PHYSICS_CONSTANTS.WOBBLE_INTENSITY,
+    PHYSICS_CONSTANTS.WOBBLE_INTENSITY
+  );
 
   return newActor;
 }
@@ -128,37 +120,45 @@ export function applyTapForce(actor: PhysicsState, tapRate: number): PhysicsStat
 export function resolveCollision(
   actor1: PhysicsState,
   actor2: PhysicsState
-): void {
+): boolean {
   const distance = actor1.position.distanceTo(actor2.position);
-  const collisionThreshold = 1.0; // Collision distance threshold
+  const threshold = PHYSICS_CONSTANTS.COLLISION_THRESHOLD;
 
-  if (distance < collisionThreshold) {
+  if (distance < threshold) {
     // Collision direction vector
     const direction = actor2.position
       .clone()
       .sub(actor1.position)
       .normalize();
 
-    // Restitution (simplified momentum conservation)
-    const restitution = 0.5; // Coefficient of restitution
+    // Restitution (bounciness on collision)
+    const restitution = PHYSICS_CONSTANTS.COLLISION_RESTITUTION;
     const relativeVelocity = actor1.velocity.clone().sub(actor2.velocity);
     const impactSpeed = relativeVelocity.dot(direction);
 
     if (impactSpeed > 0) {
       // Apply restitution only if colliding
-      const impulse = direction.multiplyScalar(impactSpeed * restitution);
+      const impulse = direction.clone().multiplyScalar(impactSpeed * restitution);
 
       actor1.velocity.sub(impulse);
       actor2.velocity.add(impulse);
 
+      // Add angular momentum from impact (makes collisions more dramatic)
+      const impactStrength = impactSpeed * 0.3;
+      actor1.angularVelocity -= impactStrength * (Math.random() - 0.3);
+      actor2.angularVelocity += impactStrength * (Math.random() - 0.3);
+
       // Position correction (prevent overlap)
-      const overlap = collisionThreshold - distance;
+      const overlap = threshold - distance;
       const correction = direction.multiplyScalar(overlap * 0.5);
 
       actor1.position.sub(correction);
       actor2.position.add(correction);
+
+      return true; // Collision occurred
     }
   }
+  return false; // No collision
 }
 
 /**

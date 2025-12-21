@@ -80,6 +80,26 @@ export interface GameState {
 }
 
 /**
+ * Actor visual state
+ * Used for animation effects
+ */
+export type ActorState = 'idle' | 'attacking' | 'damaged';
+
+/**
+ * Actor type for rendering
+ * Extends PhysicsState with visual properties
+ */
+export interface Actor {
+  id: 'player' | 'opponent';
+  state: ActorState;
+  position: { x: number; y: number; z: number };
+  velocity: { x: number; y: number; z: number };
+  rotation: { x: number; y: number; z: number };
+  tipping: number;
+  isFallen: boolean;
+}
+
+/**
  * Ring specifications
  * Re-exported from physics constants for convenience
  */

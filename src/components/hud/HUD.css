@@ -1,0 +1,219 @@
+/**
+ * HUD Styles
+ * Retro 8-bit styling for game HUD
+ */
+
+.hud-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* Top center - Rank Display */
+.hud-top-center {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.rank-display {
+  background: rgba(0, 0, 0, 0.7);
+  border: 3px solid #ffd700;
+  border-radius: 8px;
+  padding: 8px 16px;
+  text-align: center;
+}
+
+.rank-title {
+  font-size: 10px;
+  color: #aaa;
+  margin-bottom: 2px;
+}
+
+.rank-name {
+  font-size: 24px;
+  font-weight: bold;
+  color: #ffd700;
+  text-shadow: 2px 2px 0 #000;
+}
+
+.rank-progress {
+  font-size: 10px;
+  color: #ff9800;
+  margin-top: 4px;
+}
+
+/* Stats Row */
+.hud-stats-row {
+  position: absolute;
+  top: 80px;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0 12px;
+}
+
+.hud-fighter-stats {
+  background: rgba(0, 0, 0, 0.6);
+  border: 2px solid #fff;
+  border-radius: 8px;
+  padding: 8px 12px;
+  min-width: 120px;
+}
+
+.hud-vs {
+  font-size: 20px;
+  font-weight: bold;
+  color: #fff;
+  text-shadow: 2px 2px 0 #000;
+  padding: 8px;
+}
+
+/* HP Display */
+.hp-container {
+  margin-bottom: 8px;
+}
+
+.hp-label {
+  font-size: 12px;
+  color: #fff;
+  margin-bottom: 4px;
+}
+
+.hp-hearts {
+  display: flex;
+  gap: 4px;
+}
+
+.hp-heart {
+  font-size: 20px;
+  text-shadow: 1px 1px 0 #000;
+}
+
+.hp-heart--full {
+  color: #ff4444;
+}
+
+.hp-heart--empty {
+  color: #666;
+}
+
+/* Gauge Display */
+.gauge-container {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.gauge-label {
+  font-size: 10px;
+  color: #ffd700;
+  width: 24px;
+}
+
+.gauge-track {
+  flex: 1;
+  height: 12px;
+  background: #333;
+  border: 2px solid #666;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.gauge-bar {
+  height: 100%;
+  background: linear-gradient(to bottom, #4caf50, #2e7d32);
+  transition: width 0.1s ease-out;
+}
+
+.gauge-bar--high {
+  background: linear-gradient(to bottom, #ff9800, #e65100);
+}
+
+.gauge-bar--full {
+  background: linear-gradient(to bottom, #ff4444, #c62828);
+  animation: gauge-pulse 0.3s ease-in-out infinite alternate;
+}
+
+.gauge-bar--charging {
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+}
+
+@keyframes gauge-pulse {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.7;
+  }
+}
+
+.gauge-percent {
+  font-size: 10px;
+  color: #fff;
+  width: 28px;
+  text-align: right;
+}
+
+/* Special Move Announcement */
+.special-announcement {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+
+.special-text {
+  font-size: 32px;
+  font-weight: bold;
+  text-shadow: 3px 3px 0 #000, -1px -1px 0 #000;
+  animation: special-appear 0.3s ease-out;
+}
+
+.special-text--player {
+  color: #4fc3f7;
+}
+
+.special-text--opponent {
+  color: #ff7043;
+}
+
+.special-text--clash {
+  color: #ffd700;
+  font-size: 40px;
+  animation: clash-shake 0.5s ease-out;
+}
+
+@keyframes special-appear {
+  from {
+    transform: scale(2);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes clash-shake {
+  0%, 100% {
+    transform: translateX(0);
+  }
+  25% {
+    transform: translateX(-10px);
+  }
+  75% {
+    transform: translateX(10px);
+  }
+}

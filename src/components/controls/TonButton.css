@@ -41,10 +41,12 @@
   box-shadow: 0 6px 0 var(--retro-dark, #1a0f08);
 }
 
-.ton-button:active {
+.ton-button:active,
+.ton-button--pressed {
   /* Press down effect */
-  transform: translateY(2px);
-  box-shadow: 0 2px 0 var(--retro-dark, #1a0f08);
+  transform: translateY(4px) scale(0.95);
+  box-shadow: 0 1px 0 var(--retro-dark, #1a0f08);
+  background-color: #6b3503;
 }
 
 .ton-button-text {

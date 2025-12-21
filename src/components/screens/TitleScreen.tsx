@@ -41,7 +41,7 @@ export default function TitleScreen({ className = '' }: TitleScreenProps) {
   };
 
   return (
-    <div className={`full-screen center-content ${className}`}>
+    <div className={`full-screen scrollable center-content ${className}`}>
       {/* Game Title */}
       <h1 className="retro-title" style={{ marginBottom: 'var(--spacing-md)' }}>
         レトロ相撲
@@ -56,9 +56,7 @@ export default function TitleScreen({ className = '' }: TitleScreenProps) {
       <div
         className="retro-panel"
         style={{
-          marginBottom: 'var(--spacing-xl)',
           padding: 'var(--spacing-md)',
-          minWidth: '300px',
           textAlign: 'center',
         }}
       >
@@ -67,7 +65,7 @@ export default function TitleScreen({ className = '' }: TitleScreenProps) {
         </p>
         <div
           style={{
-            fontSize: 'calc(var(--font-xl) * 2)',
+            fontSize: 'clamp(48px, 15vmin, 96px)',
             fontWeight: 'bold',
             color: 'var(--retro-accent)',
             marginBottom: 'var(--spacing-sm)',
@@ -111,7 +109,6 @@ export default function TitleScreen({ className = '' }: TitleScreenProps) {
       <div
         className="retro-panel"
         style={{
-          maxWidth: '500px',
           padding: 'var(--spacing-md)',
         }}
       >
