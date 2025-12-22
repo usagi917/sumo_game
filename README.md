@@ -1,188 +1,299 @@
-# 相撲バトルゲーム
+# Retro Sumo Battle (sumo-game)
 
-モバイル向けのレトロ風3D相撲バトルゲーム。シンプルなタッチ操作で楽しむ、短時間の白熱バトル。
+[![English](https://img.shields.io/badge/English-Read-blue.svg)](#english)
+[![日本語](https://img.shields.io/badge/日本語-Read-blue.svg)](#japanese)
 
-## 特徴
+---
 
-- **レトロデザイン**: 8bitカラーパレット、ドット絵風フォント、懐かしいゲーム感
-- **シンプル操作**: 連打でトン！相手を押し出す直感的なバトル
-- **番付システム**: 本格的な相撲の階級制度（前頭→小結→関脇→大関→横綱）
-- **短時間バトル**: 1ラウンド1〜2分の1本勝負
-- **軽量設計**: 1.5MB以下のバンドルサイズ、Vercel最適化済み
-- **快適動作**: 30fps以上（モバイル）、シンプルな3D描画
+<a id="english"></a>
 
-## クイックスタート
+# Retro Sumo Battle (sumo-game)
 
-### 必要環境
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Status](https://img.shields.io/badge/status-active-success.svg)
 
-- Node.js 18以上
-- npm または yarn
+A retro 8-bit styled 3D sumo battle you can play in the browser.
+Mash the "Ton!" button to build your spirit gauge, then unleash special moves to reduce the opponent's HP.
+This is a front-end only project built with Vite + React + Three.js + Zustand.
 
-### インストール
+## Features
+
+- Simple tap/mash controls with a 100% gauge trigger for special moves
+- Rank-based AI difficulty and automatic sumo ranking progression
+- Lightweight custom physics with collision and impact effects
+- 3D scene + pixel-art wrestler visuals + retro UI styling
+- Procedural SFX via Web Audio API and mobile haptic feedback
+
+## Requirements
+
+- Node.js: version not specified (Example: 18+)
+- External services: none (front-end only)
+
+## Installation
 
 ```bash
-# リポジトリをクローン
-git clone https://github.com/usagi917/sumo_game.git
-cd sumo_game
-
-# 依存関係をインストール
 npm install
 ```
 
-### 開発サーバー起動
+## Quick Start
+
+1. (Optional) Copy `.env.example` to `.env`
+2. `npm install`
+3. `npm run dev`
+4. Open `http://localhost:5173`
+
+## Usage
+
+### Dev server
 
 ```bash
 npm run dev
 ```
 
-ブラウザで `http://localhost:5173` を開きます。
-
-### ビルド
+### Build & preview
 
 ```bash
 npm run build
+npm run preview
 ```
 
-`dist/` ディレクトリにプロダクションビルドが生成されます。
+### How to play (overview)
 
-## 操作方法
+- Start from the title screen
+- Mash "Ton!" to charge the gauge
+- At 100%, a special move triggers and deals HP damage
+- When the opponent's HP reaches 0, the match ends and ranks update
 
-### バトル中の操作
-
-- **トン！ボタン**: ボタンを連打して相手を押し出す
-  - 連打すればするほど強い力で押せる
-  - タップレート（1秒あたりの回数）で押す力が変わる
-  - 相手を傾けて転倒させるか、土俵外に押し出せば勝利
-
-### 勝利条件
-
-以下のいずれかを満たすと勝利：
-
-- 相手を転倒させる（傾きが限界に達する）
-- 相手を土俵外に押し出す（土俵中心から4.5ユニット超）
-
-## ゲームの流れ
-
-1. **タイトル画面** - 現在の番付と戦績を確認
-2. **バトル** - AI対戦で1本勝負（1ラウンド）
-3. **リザルト** - 勝敗と番付の変動を表示
-4. 連続挑戦またはタイトルへ戻る
+## User Flow (Mermaid)
 
 ```mermaid
 flowchart TD
-  T[タイトル画面<br/>現在の番付表示] -->|試合開始| B[1本勝負<br/>AI対戦]
-  B -->|勝利| W[昇進規定の連勝で昇格]
-  B -->|敗北| L[降格]
-  W --> RES[リザルト表示<br/>昇進/維持]
-  L --> RES
-  RES -->|連続挑戦| B
-  RES -->|タイトルへ| T
+  T[Title Screen] -->|Start| B[Battle Begins]
+  B -->|Mash Ton!| G[Charge Spirit Gauge]
+  G -->|100% Reached| S[Special Move]
+  S -->|Apply Damage| K[HP Decrease / KO Check]
+  K -->|Match Ends| R[Result Screen]
+  R -->|Play Again| B
+  R -->|Back to Title| T
+  K -->|Not Finished| B
 ```
 
-### 番付システム
+## System Architecture (Mermaid)
 
-**階級制度**:
-- 十両（開始）→ 幕内 → 小結 → 関脇 → 大関 → 横綱（最高）
+```mermaid
+flowchart LR
+  subgraph Client
+    UI[React UI\nScreens/HUD/Controls]
+  end
+  subgraph State
+    Store[Zustand Stores\nGame/Ranking]
+  end
+  subgraph Systems
+    Physics[Custom Physics]
+    AI[Rank-based AI]
+    Audio[Web Audio SFX]
+  end
+  subgraph Renderer
+    R3F[Three.js Scene\n@react-three/fiber]
+  end
+  subgraph Storage
+    LS[(localStorage)]
+  end
 
-**昇進・降格ルール**:
-- **昇進**: 現在の階級に応じた連勝数が必要
-  - 十両・幕内・小結: **1勝**で昇進
-  - 関脇: **2連勝**で大関へ昇進
-  - 大関: **3連勝**で横綱へ昇進
-- **降格**: **1敗**で前の階級へ降格（十両は降格なし）
-- **連勝**: 敗北するとリセットされる
+  UI -->|Input/Render| Store
+  Store -->|State Updates| UI
+  Store -->|Physics Step| Physics
+  Store -->|AI Decisions| AI
+  Store -->|SFX Control| Audio
+  Store -->|3D Sync| R3F
+  R3F -->|Frame Render| UI
+  Store -->|Rank Persistence| LS
+```
 
-**戦績の保存**:
-- 現在の番付と連勝数はlocalStorageに保存
-- ブラウザを閉じても進捗が保持される
-
-## 技術スタック
-
-- **フロントエンド**: Vite + React + TypeScript
-- **3Dレンダリング**: Three.js + @react-three/fiber + @react-three/drei
-- **状態管理**: Zustand
-- **レトロスタイル**: CSS + ピクセルフォント（M PLUS 1）
-- **デプロイ**: Vercel（静的ビルド）
-
-**設計方針**: カスタム物理エンジン（重力、減衰、衝突）と連打システムによるシンプルで爽快な相撲バトル
-
-## プロジェクト構造
+## Directory Structure
 
 ```
 src/
-├── types/             # 型定義
-│   └── game.ts        # 共通インターフェース
-│
-├── state/             # 状態管理（Zustand）
-│   ├── gameStore.ts   # 試合状況、進行管理
-│   └── rankingStore.ts # 番付、戦績の永続化
-│
-├── physics/           # 物理演算
-│   ├── constants.ts   # 物理定数
-│   └── tontonzumo-physics.ts # 物理挙動ロジック
-│
-├── systems/           # 非表示のシステム
-│   ├── ai.ts          # 対戦相手の思考ロジック
-│   ├── collision.ts   # 衝突判定
-│   ├── sound.ts       # 効果音管理
-│   └── tap-tracker.ts # タップレート測定
-│
-├── components/        # UI/シーンコンポーネント
-│   ├── controls/      # 操作ボタン
-│   ├── hud/           # ステータス表示
-│   ├── scene/         # 3Dオブジェクト（力士、土俵、演出）
-│   └── screens/       # 画面（タイトル、試合、結果）
-│
-├── styles/            # スタイルシート
-│   ├── fonts.css      # フォント設定
-│   └── retro.css      # レトロ演出用スタイル
-│
-└── utils/             # ユーティリティ
-    └── textureGenerator.ts # 動的なテクスチャ生成
+  components/   # UI + 3D scene (screens/hud/scene/controls)
+  physics/      # Physics logic
+  state/        # Zustand stores (game/ranking)
+  systems/      # AI, sound, tap tracking
+  styles/       # Retro UI styles
+  types/        # Type definitions
+  utils/        # Texture generation, etc.
+
+docs/           # Design docs
+index.html      # App entry
+vite.config.ts  # Vite config
+vercel.json     # Vercel deploy config
+.env.example    # Environment variable template
 ```
 
-## 開発ガイド
+## Configuration
 
-### 開発サーバー起動
+See `.env.example` for Vite env templates.
 
-```bash
-npm run dev
-```
+- Dev server: `VITE_PORT`, `VITE_HOST`
+- Build/Deploy: `VITE_BASE_URL`, `VITE_SOURCEMAP`, `VITE_BUNDLE_ANALYZER`
+- Debug: `VITE_DEBUG_MODE`, `VITE_DEBUG_PHYSICS`, `VITE_DEBUG_AI`
+- Balance: `VITE_INITIAL_HP`, `VITE_GAUGE_MULTIPLIER`, `VITE_DAMAGE_MULTIPLIER`
+- PWA display: `VITE_APP_NAME`, `VITE_THEME_COLOR`
 
-### ビルド
-
-```bash
-npm run build
-```
-
-### リント
+## Development
 
 ```bash
 npm run lint
 ```
 
-## ドキュメント
-
-- [ゲームデザイン](docs/GAME_DESIGN.md) - ゲームメカニクスと仕様
-- [アーキテクチャ](docs/ARCHITECTURE.md) - システム設計とモジュール構造
-- [操作仕様](docs/CONTROLS.md) - 入力システムと操作詳細
-
-## パフォーマンス
-
-- **目標FPS**: 30fps以上（モバイル）
-- **初回ロード**: 3秒以内（Wi-Fi環境）
-- **バンドルサイズ**: 1.5MB以下（シンプル実装により軽量化）
-
-## ブラウザ対応
-
-- iOS Safari 15以上
-- Android Chrome 90以上
-- デスクトップChrome、Firefox最新版
-
-## ライセンス
+## License
 
 MIT License
 
-## 貢献
 
-プルリクエストを歓迎します。大きな変更の場合は、まずissueを開いて変更内容を議論してください。
+---
+
+<a id="japanese"></a>
+
+# レトロ相撲バトル (sumo-game)
+
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
+![Status](https://img.shields.io/badge/status-active-success.svg)
+
+ブラウザで遊べる、レトロ8bit調の3D相撲バトル。
+「トン！」連打で気合ゲージをため、必殺技で相手のHPを削るシンプル設計です。
+Vite + React + Three.js + Zustand で構成されたフロントエンド単体プロジェクトです。
+
+## Features
+
+- 連打でゲージをためるシンプル操作（100%で必殺技）
+- ランク連動のAI難易度と番付の自動昇進・降格
+- カスタム軽量物理シミュレーション＋衝突/衝撃演出
+- 3Dシーン + ピクセルアート風キャラクター + レトロUI
+- Web Audio API による生成効果音とモバイル向け振動フィードバック
+
+## Requirements
+
+- Node.js: バージョン指定なし（Example: 18+）
+- 外部サービス: なし（フロントエンドのみ）
+
+## Installation
+
+```bash
+npm install
+```
+
+## Quick Start
+
+1. （任意）`.env.example` を `.env` にコピー
+2. `npm install`
+3. `npm run dev`
+4. ブラウザで `http://localhost:5173` を開く
+
+## Usage
+
+### 開発サーバー
+
+```bash
+npm run dev
+```
+
+### ビルド & プレビュー
+
+```bash
+npm run build
+npm run preview
+```
+
+### ゲームの遊び方（概要）
+
+- タイトル画面から「スタート」
+- 「トン！」を連打してゲージを上げる
+- ゲージ100%で必殺技が発動し、相手HPを削る
+- 相手HPが0になると勝敗が決定し、番付が更新される
+
+## User Flow (Mermaid)
+
+```mermaid
+flowchart TD
+  T[タイトル画面] -->|スタート| B[バトル開始]
+  B -->|トン連打| G[気合ゲージ加算]
+  G -->|100%到達| S[必殺技発動]
+  S -->|ダメージ反映| K[HP減少/KO判定]
+  K -->|決着| R[リザルト表示]
+  R -->|もう一度| B
+  R -->|タイトルへ| T
+  K -->|未決着| B
+```
+
+## System Architecture (Mermaid)
+
+```mermaid
+flowchart LR
+  subgraph Client
+    UI[React UI\nScreens/HUD/Controls]
+  end
+  subgraph State
+    Store[Zustand Stores\nGame/Ranking]
+  end
+  subgraph Systems
+    Physics[Custom Physics]
+    AI[Rank-based AI]
+    Audio[Web Audio SFX]
+  end
+  subgraph Renderer
+    R3F[Three.js Scene\n@react-three/fiber]
+  end
+  subgraph Storage
+    LS[(localStorage)]
+  end
+
+  UI -->|入力/表示| Store
+  Store -->|状態更新| UI
+  Store -->|物理更新| Physics
+  Store -->|AI判定| AI
+  Store -->|効果音制御| Audio
+  Store -->|3D反映| R3F
+  R3F -->|フレーム描画| UI
+  Store -->|番付保存| LS
+```
+
+## Directory Structure
+
+```
+src/
+  components/   # UI・3Dシーン（screens/hud/scene/controls）
+  physics/      # 物理演算ロジック
+  state/        # Zustandストア（ゲーム/番付）
+  systems/      # AI・サウンド・タップ計測など
+  styles/       # レトロUIのスタイル
+  types/        # 型定義
+  utils/        # テクスチャ生成など
+
+docs/           # 設計ドキュメント
+index.html      # アプリエントリ
+vite.config.ts  # Vite設定
+vercel.json     # Vercelデプロイ設定
+.env.example    # 環境変数のサンプル
+```
+
+## Configuration
+
+`.env.example` に Vite 用の環境変数テンプレートがあります。
+
+- 開発サーバー: `VITE_PORT`, `VITE_HOST`
+- ビルド/公開: `VITE_BASE_URL`, `VITE_SOURCEMAP`, `VITE_BUNDLE_ANALYZER`
+- デバッグ: `VITE_DEBUG_MODE`, `VITE_DEBUG_PHYSICS`, `VITE_DEBUG_AI`
+- ゲーム調整: `VITE_INITIAL_HP`, `VITE_GAUGE_MULTIPLIER`, `VITE_DAMAGE_MULTIPLIER`
+- PWA表示: `VITE_APP_NAME`, `VITE_THEME_COLOR`
+
+## Development
+
+```bash
+npm run lint
+```
+
+## License
+
+MIT License
+
+
