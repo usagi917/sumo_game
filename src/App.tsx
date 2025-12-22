@@ -7,6 +7,8 @@
  * - result: ResultScreen (victory/defeat)
  */
 
+import { useEffect } from 'react';
+import { sdk } from '@farcaster/miniapp-sdk';
 import TitleScreen from './components/screens/TitleScreen';
 import GameScreen from './components/screens/GameScreen';
 import ResultScreen from './components/screens/ResultScreen';
@@ -18,6 +20,10 @@ import { useGameStatus } from './state/gameStore';
  */
 export default function App() {
   const gameStatus = useGameStatus();
+
+  useEffect(() => {
+    sdk.actions.ready();
+  }, []);
 
   // Render appropriate screen based on game status
   switch (gameStatus) {

@@ -3,7 +3,24 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>レトロ相撲バトル</title>
+    <title>相撲バトル</title>
+    <meta
+      name="fc:miniapp"
+      content='{
+        "version":"next",
+        "imageUrl":"https://sumo-liart.vercel.app/miniapp/hero.png",
+        "button":{
+          "title":"Play Sumo",
+          "action":{
+            "type":"launch_miniapp",
+            "name":"Retro Sumo Battle",
+            "url":"https://sumo-liart.vercel.app/",
+            "splashImageUrl":"https://sumo-liart.vercel.app/miniapp/splash.png",
+            "splashBackgroundColor":"#0f0f0f"
+          }
+        }
+      }'
+    />
     <!-- Preconnect to Google Fonts for performance -->
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />

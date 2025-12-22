@@ -1,0 +1,23 @@
+{
+  "accountAssociation": {
+    "header": "REPLACE_ME",
+    "payload": "REPLACE_ME",
+    "signature": "REPLACE_ME"
+  },
+  "miniapp": {
+    "version": "1",
+    "name": "Retro Sumo Battle",
+    "homeUrl": "https://sumo-liart.vercel.app/",
+    "iconUrl": "https://sumo-liart.vercel.app/miniapp/icon.png",
+    "splashImageUrl": "https://sumo-liart.vercel.app/miniapp/splash.png",
+    "splashBackgroundColor": "#0f0f0f",
+    "primaryCategory": "games",
+    "tags": ["sumo", "arcade", "battle", "3d"],
+    "tagline": "Push your rival off the ring.",
+    "heroImageUrl": "https://sumo-liart.vercel.app/miniapp/hero.png",
+    "ogImageUrl": "https://sumo-liart.vercel.app/miniapp/hero.png",
+    "ogTitle": "Retro Sumo Battle",
+    "ogDescription": "A bite-sized 3D sumo showdown in your browser.",
+    "screenshotUrls": ["https://sumo-liart.vercel.app/miniapp/screenshot.png"]
+  }
+}
