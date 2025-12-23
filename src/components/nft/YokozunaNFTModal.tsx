@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useAccount, useSwitchChain } from "wagmi";
 import { ConnectKitButton } from "connectkit";
 import { useYokozunaNFT } from "../../hooks/useYokozunaNFT";
+import { useNFTStore } from "../../state/nftStore";
 import { CHAIN_ID } from "../../config/wagmi";
 
 interface YokozunaNFTModalProps {
@@ -15,6 +16,7 @@ type ModalState = "prompt" | "minting" | "success" | "error";
 export function YokozunaNFTModal({ isOpen, onClose, onSkip }: YokozunaNFTModalProps) {
   const { isConnected, chainId: walletChainId } = useAccount();
   const { switchChain } = useSwitchChain();
+  const markNFTClaimed = useNFTStore((state) => state.markNFTClaimed);
   const nftImageUrl = "/sumoNFT.png";
   const {
     nextGeneration,
@@ -73,15 +75,18 @@ export function YokozunaNFTModal({ isOpen, onClose, onSkip }: YokozunaNFTModalPr
     }
   }, [isWritePending, isConfirming, isConfirmed]);
 
-  // モーダルを閉じる時のリセット
+  // モーダルを閉じる時のリセット（NFT取得成功後）
   const handleClose = () => {
+    markNFTClaimed(); // 取得済みをマーク
     reset();
     setModalState("prompt");
     setExpectedGeneration(null);
     onClose();
   };
 
+  // スキップ時も取得済みとしてマーク（同じ横綱昇進で再度表示しない）
   const handleSkip = () => {
+    markNFTClaimed(); // スキップも取得済み扱い
     reset();
     setModalState("prompt");
     setExpectedGeneration(null);
@@ -201,12 +206,6 @@ export function YokozunaNFTModal({ isOpen, onClose, onSkip }: YokozunaNFTModalPr
             <p className="retro-text" style={styles.text}>
               横綱NFTを取得しました！
             </p>
-            {isConfirmed && !mintedGeneration && expectedGeneration === null && (
-              <p className="retro-text" style={styles.warningText}>
-                取引は完了しましたが、イベントを取得できませんでした。
-                チェーン/コントラクト設定を確認してください。
-              </p>
-            )}
             <button
               className="retro-button"
               onClick={handleClose}

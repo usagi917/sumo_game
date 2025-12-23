@@ -206,18 +206,6 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
       <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
         <button
           className="retro-button"
-          onClick={handleReplay}
-          style={{
-            fontSize: '18px',
-            padding: '16px 32px',
-            backgroundColor: '#4caf50',
-          }}
-        >
-          もう一度
-        </button>
-
-        <button
-          className="retro-button"
           onClick={handleRestartFromBeginning}
           style={{
             fontSize: '18px',
@@ -226,6 +214,18 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
           }}
         >
           最初から
+        </button>
+
+        <button
+          className="retro-button"
+          onClick={handleReplay}
+          style={{
+            fontSize: '18px',
+            padding: '16px 32px',
+            backgroundColor: '#4caf50',
+          }}
+        >
+          次の取り組みへ
         </button>
 
         <button

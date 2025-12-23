@@ -14,6 +14,7 @@
 
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { useNFTStore } from './nftStore';
 
 /**
  * Sumo rank levels (0-5)
@@ -158,8 +159,12 @@ export const useRankingStore = create<RankingStore>()(
 
       /**
        * Reset ranking to initial state (for testing/debug)
+       * NFT取得状態もリセットする
        */
-      resetRanking: () => set(initialState),
+      resetRanking: () => {
+        useNFTStore.getState().resetNFTState();
+        set(initialState);
+      },
     }),
     {
       name: 'sumoRanking', // localStorage key
