@@ -5,8 +5,8 @@ import { getDefaultConfig } from "connectkit";
 // WalletConnect Project ID
 const walletConnectProjectId = import.meta.env.VITE_WALLETCONNECT_PROJECT_ID || "";
 
-// 使用するチェーン（現在はBase Sepolia固定）
-const targetChain = baseSepolia;
+// 使用するチェーン（Base Mainnet）
+const targetChain = base;
 
 export const config = createConfig(
   getDefaultConfig({
