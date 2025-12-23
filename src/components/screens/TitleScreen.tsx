@@ -14,6 +14,7 @@ import {
   useNextRankName,
   useIsYokozuna,
 } from '../../state/rankingStore';
+import { useNFTStore } from '../../state/nftStore';
 
 /**
  * Title Screen Props
@@ -35,9 +36,17 @@ export default function TitleScreen({ className = '' }: TitleScreenProps) {
   const nextRankName = useNextRankName();
   const isYokozuna = useIsYokozuna();
   const consecutiveWins = useRankingStore((state) => state.consecutiveWins);
+  const resetRanking = useRankingStore((state) => state.resetRanking);
+  const triggerYokozunaModal = useNFTStore((state) => state.triggerYokozunaModal);
 
   const handleStart = () => {
     startNewGame();
+  };
+
+  const handleResetRanking = () => {
+    const confirmed = window.confirm('番付と戦績をリセットして最初からやり直しますか？');
+    if (!confirmed) return;
+    resetRanking();
   };
 
   return (
@@ -83,13 +92,38 @@ export default function TitleScreen({ className = '' }: TitleScreenProps) {
           </p>
         )}
         {isYokozuna && (
-          <p
-            className="retro-text"
-            style={{ fontSize: 'var(--font-sm)', color: 'var(--tapping-safe)', fontWeight: 'bold' }}
-          >
-            ★ 最高位 ★
-          </p>
+          <>
+            <p
+              className="retro-text"
+              style={{ fontSize: 'var(--font-sm)', color: 'var(--tapping-safe)', fontWeight: 'bold' }}
+            >
+              ★ 最高位 ★
+            </p>
+            <button
+              className="retro-button"
+              onClick={triggerYokozunaModal}
+              style={{
+                fontSize: 'var(--font-xs)',
+                padding: 'var(--spacing-xs) var(--spacing-md)',
+                marginTop: 'var(--spacing-sm)',
+              }}
+            >
+              横綱NFTを取得
+            </button>
+          </>
         )}
+
+        <button
+          className="retro-button"
+          onClick={handleResetRanking}
+          style={{
+            fontSize: 'var(--font-xs)',
+            padding: 'var(--spacing-xs) var(--spacing-md)',
+            marginTop: 'var(--spacing-sm)',
+          }}
+        >
+          番付リセット
+        </button>
       </div>
 
       {/* Start Button */}

@@ -14,6 +14,7 @@ import {
   useNextRankName,
   WINS_REQUIRED,
 } from '../../state/rankingStore';
+import { useNFTStore } from '../../state/nftStore';
 import { playVictorySound, playDefeatSound } from '../../systems/sound';
 
 export interface ResultScreenProps {
@@ -22,15 +23,18 @@ export interface ResultScreenProps {
 
 export default function ResultScreen({ className = '' }: ResultScreenProps) {
   const winner = useWinner();
-  const { startNewGame, setGameStatus } = useGameActions();
+  const { startNewGame, setGameStatus, resetGame } = useGameActions();
 
   // Ranking state
-  const { recordWin, recordLoss, lastAction, currentRank } = useRankingStore();
+  const { recordWin, recordLoss, lastAction, currentRank, resetRanking } = useRankingStore();
   const currentRankName = useCurrentRankName();
   const winsUntilPromotion = useWinsUntilPromotion();
   const nextRankName = useNextRankName();
   const consecutiveWins = useRankingStore((state) => state.consecutiveWins);
   const winsNeeded = WINS_REQUIRED[currentRank];
+
+  // NFT state
+  const triggerYokozunaModal = useNFTStore((state) => state.triggerYokozunaModal);
 
   // Record win/loss and play sound on mount (only once)
   const recorded = useRef(false);
@@ -47,6 +51,17 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
     }
   }, [winner, recordWin, recordLoss]);
 
+  // 横綱昇進時にNFTモーダルを表示
+  useEffect(() => {
+    if (lastAction === 'promoted' && currentRank === 5) {
+      // 少し遅延させて昇進メッセージを見せてからモーダル表示
+      const timer = setTimeout(() => {
+        triggerYokozunaModal();
+      }, 1500);
+      return () => clearTimeout(timer);
+    }
+  }, [lastAction, currentRank, triggerYokozunaModal]);
+
   const playerWon = winner === 'player';
   const resultText = playerWon ? '勝ち!' : '負け...';
   const resultColor = playerWon ? '#4caf50' : '#f44336';
@@ -57,6 +72,13 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
 
   const handleReturnToTitle = () => {
     setGameStatus('title');
+  };
+
+  const handleRestartFromBeginning = () => {
+    const confirmed = window.confirm('番付と戦績をリセットして最初からやり直しますか？');
+    if (!confirmed) return;
+    resetRanking();
+    resetGame();
   };
 
   return (
@@ -181,7 +203,7 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
       </div>
 
       {/* Action Buttons */}
-      <div style={{ display: 'flex', gap: '16px' }}>
+      <div style={{ display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center' }}>
         <button
           className="retro-button"
           onClick={handleReplay}
@@ -192,6 +214,18 @@ export default function ResultScreen({ className = '' }: ResultScreenProps) {
           }}
         >
           もう一度
+        </button>
+
+        <button
+          className="retro-button"
+          onClick={handleRestartFromBeginning}
+          style={{
+            fontSize: '18px',
+            padding: '16px 32px',
+            backgroundColor: '#ff9800',
+          }}
+        >
+          最初から
         </button>
 
         <button
