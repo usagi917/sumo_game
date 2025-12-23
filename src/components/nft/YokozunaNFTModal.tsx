@@ -145,7 +145,7 @@ export function YokozunaNFTModal({ isOpen, onClose, onSkip }: YokozunaNFTModalPr
                 onClick={() => switchChain({ chainId: CHAIN_ID })}
                 style={styles.button}
               >
-                Base Sepoliaに切替
+                Base Mainnetに切替
               </button>
             ) : (
               <button
@@ -180,7 +180,7 @@ export function YokozunaNFTModal({ isOpen, onClose, onSkip }: YokozunaNFTModalPr
             <div style={styles.spinner} />
             {transactionHash && (
               <a
-                href={`https://sepolia.basescan.org/tx/${transactionHash}`}
+                href={`https://basescan.org/tx/${transactionHash}`}
                 target="_blank"
                 rel="noreferrer"
                 style={styles.explorerLink}
